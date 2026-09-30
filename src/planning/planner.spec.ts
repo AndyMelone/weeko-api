@@ -1,3 +1,4 @@
+import { currentWeek } from './formats';
 import { SessionKind, SessionStatus } from '../generated/prisma/enums';
 import {
   BaseSlotData,
@@ -114,6 +115,7 @@ function demoState(): PlanState {
     travel: true,
     cancelled: new Set(),
     tutorUnavailable: [],
+    currentWeek: 0,
   };
 }
 
@@ -270,5 +272,12 @@ describe('Planner', () => {
     expect(p.ruleOf(p.svc('ange'))).toContain(
       'indisponible le samedi après 12h',
     );
+  });
+
+  it('semaine en cours d’après la date', () => {
+    expect(currentWeek(new Date('2026-09-30T21:45:00Z'))).toBe(-1);
+    expect(currentWeek(new Date('2026-10-05T00:00:00Z'))).toBe(0);
+    expect(currentWeek(new Date('2026-10-11T23:59:00Z'))).toBe(0);
+    expect(currentWeek(new Date('2026-10-12T00:00:00Z'))).toBe(1);
   });
 });

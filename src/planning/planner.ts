@@ -83,6 +83,8 @@ export interface PlanState {
   travel: boolean;
   /** Indisponibilités du répétiteur. */
   tutorUnavailable: TimeBlock[];
+  /** Semaine en cours : point de départ des propositions de rattrapage. */
+  currentWeek: number;
   /**
    * Séances annulées pendant l'opération : retirées de [sessions], puis
    * archivées en base (cancelledAt), jamais effacées.
@@ -370,7 +372,7 @@ export class Planner {
         svc: u.svc,
         cls: u.cls,
         due: u,
-        week: 0,
+        week: this.state.currentWeek,
         placedSession: ps,
         title:
           u.cls != null

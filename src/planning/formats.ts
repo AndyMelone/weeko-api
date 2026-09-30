@@ -62,6 +62,16 @@ export function dateOf(week: number, day: number): Date {
   return new Date(Date.UTC(2026, 9, 5 + week * 7 + day));
 }
 
+/** Semaine en cours (décalage depuis la semaine 0), date du serveur en UTC (= Abidjan). */
+export function currentWeek(now = new Date()): number {
+  const day = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  return Math.floor((day - dateOf(0, 0).getTime()) / (7 * 86_400_000));
+}
+
 /** 930 → « 15h30 », 900 → « 15h ». */
 export function fmt(minutes: number): string {
   const h = Math.floor(minutes / 60);

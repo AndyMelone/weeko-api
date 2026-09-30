@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { currentWeek } from './formats';
 import { DueData, PlanState, Planner, PrepData, SessionData } from './planner';
 
 type Tx = Prisma.TransactionClient;
@@ -139,6 +140,7 @@ export class PlanningRepository {
       baseSlots,
       travel: settings?.travel ?? false,
       tutorUnavailable: tutorBlocks,
+      currentWeek: currentWeek(),
       cancelled: new Set(),
     };
   }
