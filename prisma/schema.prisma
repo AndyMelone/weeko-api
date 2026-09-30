@@ -1,0 +1,189 @@
+// Weeko : planning d'un répétiteur (élèves à domicile + sites Succès Group).
+// Heures en minutes depuis minuit ; jours 0 = lundi … 6 = dimanche ;
+// semaines = décalage par rapport à la semaine 0 (lundi 5 octobre 2026).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ServiceKind {
+  eleve
+  site
+}
+
+enum SessionStatus {
+  prevue
+  faite
+  manquee
+  rattrapee
+}
+
+enum SessionKind {
+  normal
+  rattrapage
+}
+
+enum Who {
+  moi
+  eleve
+}
+
+/// Élève à domicile ou site Succès Group.
+model Service {
+  id         String      @id @default(cuid())
+  name       String
+  first      String
+  code       String
+  /// Couleur « #RRGGBB ».
+  color      String
+  kind       ServiceKind
+  perWeek    Int         @default(0)
+  noWeekend  Boolean     @default(false)
+  exDays     Int[]       @default([])
+  notBefore  Int?
+  notAfter   Int?
+  /// Numéro WhatsApp en chiffres (ex. 2250700000001).
+  phone      String      @default("")
+  phoneLabel String      @default("")
+  position   Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  /// Archivé (suppression douce) : ignoré par le planning, rien n'est effacé.
+  deletedAt  DateTime?
+
+  fixed     FixedSlot[]
+  classes   SchoolClass[]
+  sessions  Session[]
+  dues      Due[]
+  history   HistoryEntry[]
+  baseSlots BaseSlot[]
+}
+
+/// Jour fixe d'un élève (séance de 2 h).
+model FixedSlot {
+  id        String  @id @default(cuid())
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  day       Int
+  start     Int
+
+  @@unique([serviceId, day])
+}
+
+model SchoolClass {
+  id           String  @id @default(cuid())
+  name         String
+  siteId       String
+  site         Service @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  /// Nombre de séances par défaut dans la préparation d'une semaine.
+  defaultCount Int     @default(0)
+  position     Int     @default(0)
+
+  sessions  Session[]
+  dues      Due[]
+  baseSlots BaseSlot[]
+}
+
+model Session {
+  id      String        @id @default(cuid())
+  week    Int
+  day     Int
+  start   Int
+  end     Int
+  svc     String
+  service Service       @relation(fields: [svc], references: [id], onDelete: Cascade)
+  cls     String?
+  klass   SchoolClass?  @relation(fields: [cls], references: [id], onDelete: Cascade)
+  status  SessionStatus @default(prevue)
+  kind    SessionKind   @default(normal)
+  /// Séance due rattrapée par cette séance.
+  dueId   String?
+  who     Who?
+  motif   String        @default("")
+  noRedo  Boolean       @default(false)
+  fixed   Boolean       @default(false)
+  /// Issue du planning de base : conservée d'une génération à l'autre.
+  base    Boolean       @default(false)
+  /// Annulée (rattrapage retiré) : ignorée par le planning, jamais effacée.
+  cancelledAt DateTime?
+
+  @@index([week])
+  @@index([svc])
+}
+
+/// Séance due (manquée, à rattraper).
+model Due {
+  id            String       @id @default(cuid())
+  svc           String
+  service       Service      @relation(fields: [svc], references: [id], onDelete: Cascade)
+  cls           String?
+  klass         SchoolClass? @relation(fields: [cls], references: [id], onDelete: Cascade)
+  /// Date de la séance manquée, ex. « jeu. 1 oct. ».
+  from          String
+  who           Who
+  motif         String
+  placedSession String?
+  done          Boolean      @default(false)
+  /// Séance manquée qui a créé cette dette.
+  sourceId      String?
+  createdAt     DateTime     @default(now())
+}
+
+model WeekPrep {
+  week      Int      @id
+  /// Heure de sortie du travail lun.–ven., « HH:mm » (vide = pas de travail).
+  off       String[]
+  /// Classe → nombre de séances Succès Group.
+  counts    Json     @default("{}")
+  /// Classe → créneaux Succès Group choisis [{ day, start, end }].
+  /// Présent pour une classe : remplace counts (placement automatique).
+  times     Json     @default("{}")
+  /// Élève → « normal » | « une » | « absent ».
+  changes   Json     @default("{}")
+  /// Séance due → incluse (absent = incluse).
+  include   Json     @default("{}")
+  generated Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+/// Planning de base, recopié dans chaque semaine générée.
+model BaseSlot {
+  id      String       @id @default(cuid())
+  day     Int
+  start   Int
+  end     Int
+  svc     String
+  service Service      @relation(fields: [svc], references: [id], onDelete: Cascade)
+  cls     String?
+  klass   SchoolClass? @relation(fields: [cls], references: [id], onDelete: Cascade)
+  kind    SessionKind  @default(normal)
+  dueId   String?
+  fixed   Boolean      @default(false)
+}
+
+/// Historique antérieur à l'API (lignes importées).
+model HistoryEntry {
+  id       String        @id @default(cuid())
+  svc      String
+  service  Service       @relation(fields: [svc], references: [id], onDelete: Cascade)
+  date     String
+  time     String
+  status   SessionStatus
+  motif    String?
+  position Int           @default(0)
+}
+
+/// Réglages globaux (ligne unique, id = 1).
+model Settings {
+  id        Int      @id @default(1)
+  /// Compter les trajets (30 min vers un élève ou un site, 10 min entre deux
+  /// élèves, 30 min depuis le travail). Désactivé : séances bout à bout.
+  travel    Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}

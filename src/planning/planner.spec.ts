@@ -1,0 +1,240 @@
+import { SessionKind, SessionStatus } from '../generated/prisma/enums';
+import {
+  BaseSlotData,
+  PlanState,
+  Planner,
+  ServiceData,
+  SessionData,
+} from './planner';
+
+const eleve = (id: string, extra: Partial<ServiceData> = {}): ServiceData => ({
+  id,
+  name: id,
+  first: id,
+  code: id.slice(0, 2).toUpperCase(),
+  color: '#000000',
+  kind: 'eleve',
+  perWeek: 2,
+  noWeekend: false,
+  exDays: [],
+  notBefore: null,
+  notAfter: null,
+  phone: '',
+  phoneLabel: '',
+  position: 0,
+  deletedAt: null,
+  fixed: [],
+  ...extra,
+});
+
+const site = (id: string): ServiceData => ({
+  ...eleve(id),
+  kind: 'site',
+  perWeek: 0,
+});
+
+const slot = (
+  id: string,
+  day: number,
+  start: number,
+  end: number,
+  svc: string,
+  extra: Partial<BaseSlotData> = {},
+) => ({
+  id,
+  day,
+  start,
+  end,
+  svc,
+  cls: null,
+  kind: SessionKind.normal,
+  dueId: null,
+  fixed: false,
+  ...extra,
+});
+
+function demoState(): PlanState {
+  const services = [
+    eleve('ange'),
+    eleve('adje', { noWeekend: true }),
+    eleve('sondo'),
+    site('ma'),
+    site('ng'),
+  ];
+  const baseSlots: BaseSlotData[] = [
+    slot('s1', 0, 930, 1050, 'adje'),
+    slot('s2', 0, 1080, 1230, 'ma', { cls: 'c1' }),
+    slot('s3', 1, 930, 1050, 'ange'),
+    slot('s4', 1, 1060, 1180, 'sondo'),
+    slot('s6', 3, 1060, 1180, 'adje'),
+    slot('s7', 4, 1080, 1230, 'ng', { cls: 'c3' }),
+    slot('s9', 5, 870, 990, 'sondo'),
+    slot('s10', 6, 540, 660, 'ange', { fixed: true }),
+  ];
+  const sessions: SessionData[] = baseSlots.map((b) => ({
+    ...b,
+    week: 0,
+    status: SessionStatus.prevue,
+    who: null,
+    motif: '',
+    noRedo: false,
+    base: true,
+  }));
+  return {
+    services: new Map(services.map((s) => [s.id, s])),
+    classes: new Map([
+      [
+        'c1',
+        {
+          id: 'c1',
+          name: 'Terminale D',
+          siteId: 'ma',
+          defaultCount: 1,
+          position: 0,
+        },
+      ],
+      [
+        'c3',
+        {
+          id: 'c3',
+          name: 'Terminale D',
+          siteId: 'ng',
+          defaultCount: 1,
+          position: 1,
+        },
+      ],
+    ]),
+    students: ['ange', 'adje', 'sondo'],
+    sessions,
+    dues: [],
+    preps: new Map(),
+    generated: new Set([0]),
+    baseSlots,
+    travel: true,
+    cancelled: new Set(),
+  };
+}
+
+let seq = 0;
+const planner = (state = demoState()) =>
+  new Planner(state, (p) => `${p}${++seq}`);
+
+describe('Planner', () => {
+  it('ne place jamais un élève deux jours de suite', () => {
+    const p = planner();
+    // Ange a cours mardi et dimanche : lundi, mercredi et samedi sont exclus.
+    for (const d of [0, 2, 5])
+      expect(p.slotOn('ange', d, p.week(0), 0)).toBeNull();
+  });
+
+  it('respecte « jamais le week-end »', () => {
+    const p = planner();
+    expect(p.slotOn('adje', 5, [], 0)).toBeNull();
+    expect(p.slotOn('adje', 6, [], 0)).toBeNull();
+  });
+
+  it('commence 30 min après la sortie du travail', () => {
+    const p = planner();
+    expect(p.slotOn('ange', 0, [], 0)).toEqual({
+      week: 0,
+      day: 0,
+      start: 930,
+      end: 1050,
+    });
+  });
+
+  it('trajets non comptés : dès la sortie du travail et bout à bout', () => {
+    const p = planner({ ...demoState(), travel: false });
+    expect(p.slotOn('ange', 0, [], 0)).toEqual({
+      week: 0,
+      day: 0,
+      start: 900,
+      end: 1020,
+    });
+    // Sondo mardi : juste après Ange (15h30–17h30), sans 10 min de trajet.
+    const tue = p.week(0).filter((s) => s.svc !== 'sondo');
+    expect(p.slotOn('sondo', 1, tue, 0)?.start).toBe(1050);
+    expect(p.travel({ svc: 'ange' }, { svc: 'ma' })).toBe(0);
+  });
+
+  it('pointer une séance manquée crée une séance due', () => {
+    const p = planner();
+    expect(
+      p.savePointer('s3', { missed: true, who: 'eleve', motif: 'Malade' }),
+    ).toBe('Séance manquée · 1 séance à rattraper créée');
+    expect(p.state.dues).toHaveLength(1);
+    expect(p.state.dues[0]).toMatchObject({
+      svc: 'ange',
+      from: 'mar. 6 oct.',
+      sourceId: 's3',
+    });
+    expect(p.sessionById('s3')?.status).toBe(SessionStatus.manquee);
+
+    // Re-pointer la séance comme faite supprime la dette.
+    p.savePointer('s3', { missed: false });
+    expect(p.state.dues).toHaveLength(0);
+  });
+
+  it('générer une semaine recopie le planning de base et case les séances dues', () => {
+    const p = planner();
+    p.savePointer('s3', { missed: true, who: 'moi', motif: 'Réunion' });
+    const msg = p.generate(1);
+    const w1 = p.week(1);
+    expect(msg).toMatch(/^Planning du 12 – 18 octobre : \d+ séances/);
+    expect(w1.filter((s) => s.base).map((s) => s.id)).toContain('s3-w1');
+    const ratt = w1.find((s) => s.kind === SessionKind.rattrapage);
+    expect(ratt?.svc).toBe('ange');
+    expect(p.state.dues[0].placedSession).toBe(ratt?.id);
+    expect(p.state.generated.has(1)).toBe(true);
+  });
+
+  it('élève absent la semaine : aucune séance normale', () => {
+    const p = planner();
+    p.updatePrep(1, { changes: { sondo: 'absent' } });
+    p.generate(1);
+    expect(p.week(1).filter((s) => s.svc === 'sondo')).toHaveLength(0);
+  });
+
+  it('Succès Group aux créneaux choisis : jour et heures respectés', () => {
+    const p = planner();
+    p.updatePrep(1, { times: { c1: [{ day: 2, start: 1020, end: 1170 }] } });
+    p.generate(1);
+    const c1 = p.week(1).filter((s) => s.cls === 'c1');
+    // Séance déjà décidée (lundi) + créneau choisi (mercredi 17h–19h30).
+    expect(c1.map((s) => [s.day, s.start, s.end])).toEqual([
+      [0, 1080, 1230],
+      [2, 1020, 1170],
+    ]);
+    expect(p.unplaced('c1', 1)).toBe(0);
+    // Aucun élève ne chevauche le créneau.
+    const wed = p.week(1).filter((s) => s.day === 2 && s.cls == null);
+    expect(wed.every((s) => s.end <= 1020 || s.start >= 1170)).toBe(true);
+  });
+
+  it('séance Succès Group non placée apparaît dans les rattrapages et peut être casée', () => {
+    const p = planner();
+    // Préparation sans créneaux choisis : placement automatique selon counts.
+    p.state.preps.set(0, { ...p.defaultPrep(), counts: { c1: 3 }, times: {} });
+    const items = p.items().filter((i) => !i.due);
+    expect(items.length).toBeGreaterThan(0);
+    const res = p.place(items[0], { proposal: 0 });
+    expect(res?.message).toMatch(/^Casé : /);
+  });
+
+  it('annuler un rattrapage casé le remet à caser', () => {
+    const p = planner();
+    p.savePointer('s3', { missed: true, who: 'eleve', motif: '' });
+    p.generate(1);
+    const due = p.state.dues[0];
+    const placed = due.placedSession!;
+    expect(p.cancelRattrapage(due.id)).toBe(
+      'Rattrapage annulé · séance à recaser',
+    );
+    expect(p.sessionById(placed)).toBeUndefined();
+    expect(p.state.cancelled.has(placed)).toBe(true);
+    expect(p.state.dues[0].placedSession).toBeNull();
+    expect(p.items().find((i) => i.key === due.id)?.placed).toBeNull();
+    // Déjà annulé : rien à faire.
+    expect(p.cancelRattrapage(due.id)).toBeNull();
+  });
+});

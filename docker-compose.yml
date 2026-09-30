@@ -1,0 +1,21 @@
+services:
+  weeko-db:
+    image: postgres:17-alpine
+    container_name: weeko-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-weeko}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weeko}
+      POSTGRES_DB: ${POSTGRES_DB:-weeko}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - weeko-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  weeko-db-data:
