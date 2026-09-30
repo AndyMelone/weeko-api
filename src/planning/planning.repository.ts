@@ -76,36 +76,42 @@ export class PlanningRepository {
   }
 
   async load(db: Tx): Promise<PlanState> {
-    const [services, classes, sessions, dues, preps, baseSlots, settings] =
-      await Promise.all([
-        // Élèves archivés (suppression douce) : invisibles pour le planning.
-        db.service.findMany({
-          where: { deletedAt: null },
-          orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-          include: { fixed: { orderBy: { day: 'asc' } } },
-          omit: { createdAt: true, updatedAt: true },
-        }),
-        db.schoolClass.findMany({
-          orderBy: [{ position: 'asc' }, { name: 'asc' }],
-        }),
-        // Séances annulées : invisibles pour le planning.
-        db.session.findMany({
-          where: { service: { deletedAt: null }, cancelledAt: null },
-          omit: { cancelledAt: true },
-          orderBy: [{ week: 'asc' }, { day: 'asc' }, { start: 'asc' }],
-        }),
-        db.due.findMany({
-          where: { service: { deletedAt: null } },
-          orderBy: { createdAt: 'asc' },
-          omit: { createdAt: true },
-        }),
-        db.weekPrep.findMany(),
-        db.baseSlot.findMany({
-          where: { service: { deletedAt: null } },
-          orderBy: [{ day: 'asc' }, { start: 'asc' }],
-        }),
-        db.settings.findUnique({ where: { id: 1 } }),
-      ]);
+    // Requêtes l'une après l'autre : une transaction n'a qu'une connexion.
+    const blockFields = {
+      select: { day: true, start: true, end: true },
+      orderBy: [{ day: 'asc' as const }, { start: 'asc' as const }],
+    };
+    // Élèves archivés (suppression douce) : invisibles pour le planning.
+    const services = await db.service.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      include: { fixed: { orderBy: { day: 'asc' } }, unavailable: blockFields },
+      omit: { createdAt: true, updatedAt: true },
+    });
+    const classes = await db.schoolClass.findMany({
+      orderBy: [{ position: 'asc' }, { name: 'asc' }],
+    });
+    // Séances annulées : invisibles pour le planning.
+    const sessions = await db.session.findMany({
+      where: { service: { deletedAt: null }, cancelledAt: null },
+      omit: { cancelledAt: true },
+      orderBy: [{ week: 'asc' }, { day: 'asc' }, { start: 'asc' }],
+    });
+    const dues = await db.due.findMany({
+      where: { service: { deletedAt: null } },
+      orderBy: { createdAt: 'asc' },
+      omit: { createdAt: true },
+    });
+    const preps = await db.weekPrep.findMany();
+    const baseSlots = await db.baseSlot.findMany({
+      where: { service: { deletedAt: null } },
+      orderBy: [{ day: 'asc' }, { start: 'asc' }],
+    });
+    const settings = await db.settings.findUnique({ where: { id: 1 } });
+    const tutorBlocks = await db.unavailability.findMany({
+      where: { serviceId: null },
+      ...blockFields,
+    });
     return {
       services: new Map(
         services.map((s) => [
@@ -132,6 +138,7 @@ export class PlanningRepository {
       generated: new Set(preps.filter((p) => p.generated).map((p) => p.week)),
       baseSlots,
       travel: settings?.travel ?? false,
+      tutorUnavailable: tutorBlocks,
       cancelled: new Set(),
     };
   }

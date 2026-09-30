@@ -38,7 +38,10 @@ export class PlanningService {
         preps: Object.fromEntries(p.state.preps),
         generated: [...p.state.generated].sort((a, b) => a - b),
         todoCount: p.todoCount(),
-        settings: { travel: p.state.travel },
+        settings: {
+          travel: p.state.travel,
+          unavailable: p.state.tutorUnavailable,
+        },
       })),
       this.prisma.historyEntry.findMany({
         where: { service: { deletedAt: null } },

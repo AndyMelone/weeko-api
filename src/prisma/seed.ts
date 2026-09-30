@@ -1,12 +1,12 @@
 // Données de démo de l'app mobile (../weeko/lib/data/demo_data.dart) :
 // semaine du 5 au 11 octobre 2026. Ids identiques à ceux de l'app.
 import 'dotenv/config';
-import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
+import { pgAdapter } from './adapter';
 import type { SessionStatus } from '../generated/prisma/enums';
 
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+  adapter: pgAdapter(process.env.DATABASE_URL!),
 });
 
 const services = [
@@ -29,6 +29,8 @@ const services = [
     color: '#337344',
     kind: 'eleve',
     perWeek: 2,
+    exDays: [2, 5, 6],
+    noWeekend: true,
     phone: '2250700000002',
     phoneLabel: '+225 07 00 00 00 02',
   },
@@ -88,8 +90,6 @@ const base = [
   { id: 's6', day: 3, start: 1060, end: 1180, svc: 'adje' },
   { id: 's7', day: 4, start: 1080, end: 1230, svc: 'ng', cls: 'c3' },
   { id: 's8', day: 5, start: 480, end: 720, svc: 'ma', cls: 'c1', fixed: true },
-  { id: 's9', day: 5, start: 870, end: 990, svc: 'sondo' },
-  { id: 's10', day: 6, start: 540, end: 660, svc: 'ange', fixed: true },
   { id: 's11', day: 6, start: 840, end: 1080, svc: 'ng', cls: 'c3' },
 ] as const;
 
@@ -126,15 +126,27 @@ const history: Record<
   ],
 };
 
+/** Samedi après-midi et soir (Ange, Sondo) ; dimanche matin (répétiteur : serviceId vide). */
+const unavailable = [
+  { serviceId: 'ange', day: 5, start: 720, end: 1440 },
+  { serviceId: 'sondo', day: 5, start: 720, end: 1440 },
+  { serviceId: null, day: 6, start: 0, end: 720 },
+];
+
 async function main() {
   await prisma.$transaction(async (tx) => {
     // Remise à zéro complète (les suppressions en cascade suivent les services).
     await tx.weekPrep.deleteMany();
     await tx.settings.deleteMany();
+    await tx.unavailability.deleteMany();
     await tx.service.deleteMany();
 
     await tx.service.createMany({
-      data: services.map((s, position) => ({ ...s, position })),
+      data: services.map((s, position) => ({
+        ...s,
+        exDays: 'exDays' in s ? [...s.exDays] : [],
+        position,
+      })),
     });
     await tx.schoolClass.createMany({
       data: classes.map((c, position) => ({ ...c, position })),
@@ -178,9 +190,10 @@ async function main() {
       },
     });
     await tx.settings.create({ data: { id: 1, travel: false } });
+    await tx.unavailability.createMany({ data: unavailable });
   });
   console.log(
-    'Seed OK : 3 élèves, 2 sites, 6 classes, 11 séances, 2 séances dues.',
+    'Seed OK : 3 élèves, 2 sites, 6 classes, 9 séances, 2 séances dues, 3 indisponibilités.',
   );
 }
 

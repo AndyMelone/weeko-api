@@ -27,6 +27,13 @@ export const DAY_END = 1290;
 /** Heure de sortie du travail par défaut, lun.–ven. */
 export const DEFAULT_OFF = ['15:00', '15:00', '18:00', '15:00', '16:00'];
 
+/** « après 12h », « avant 12h » ou « 14h–16h ». */
+export function blockLabel(b: { start: number; end: number }): string {
+  if (b.start <= 0) return `avant ${fmt(b.end)}`;
+  if (b.end >= 1440) return `après ${fmt(b.start)}`;
+  return range(b.start, b.end);
+}
+
 export type WeekChange = 'normal' | 'une' | 'absent';
 
 /** Créneau Succès Group choisi dans Préparer (jour + heures de début et fin). */
@@ -36,8 +43,16 @@ export interface ClassTime {
   end: number;
 }
 
+/** Plage indisponible un jour donné (minutes depuis minuit). */
+export interface TimeBlock {
+  day: number;
+  start: number;
+  end: number;
+}
+
 export type ServiceData = Omit<Service, 'createdAt' | 'updatedAt'> & {
   fixed: { day: number; start: number }[];
+  unavailable: TimeBlock[];
 };
 export type ClassData = SchoolClass;
 export type SessionData = Omit<Session, 'cancelledAt'>;
@@ -66,6 +81,8 @@ export interface PlanState {
   baseSlots: BaseSlotData[];
   /** Compter les trajets (réglage global). Désactivé : séances bout à bout. */
   travel: boolean;
+  /** Indisponibilités du répétiteur. */
+  tutorUnavailable: TimeBlock[];
   /**
    * Séances annulées pendant l'opération : retirées de [sessions], puis
    * archivées en base (cancelledAt), jamais effacées.
@@ -183,6 +200,18 @@ export class Planner {
   get fromWork() {
     return this.state.travel ? 30 : 0;
   }
+  /** Indisponibilités (répétiteur + [svcId]) le jour [d]. */
+  blocksOn(svcId: string, d: number): TimeBlock[] {
+    return [
+      ...this.state.tutorUnavailable,
+      ...this.svc(svcId).unavailable,
+    ].filter((b) => b.day === d);
+  }
+
+  private blocked(svcId: string, d: number, st: number, en: number) {
+    return this.blocksOn(svcId, d).some((b) => st < b.end && en > b.start);
+  }
+
   /** Premier créneau possible pour [svcId] le jour [d] de la semaine [w]. */
   slotOn(svcId: string, d: number, ss: SessionData[], w: number): Slot | null {
     const o = this.off(d, w);
@@ -212,11 +241,12 @@ export class Planner {
       const cands = [
         earliest,
         ...day.map((s) => s.end + this.travel(s, { svc: svcId })),
-      ];
+        ...this.blocksOn(svcId, d).map((b) => b.end),
+      ].sort((a, b) => a - b);
       for (const c of cands) {
         const st = Math.max(c, earliest);
         const en = st + 120;
-        if (en > latest) continue;
+        if (en > latest || this.blocked(svcId, d, st, en)) continue;
         // Un élève peut passer avant Succès Group, jamais après.
         if (day.some((s) => !this.isEleve(s.svc) && s.start < st)) continue;
         const fits = day.every((s) => {
@@ -237,6 +267,7 @@ export class Planner {
           ];
     for (const [st, en] of wins) {
       if (o != null && o + this.fromWork > st) continue;
+      if (this.blocked(svcId, d, st, en)) continue;
       const fits = day.every((s) => {
         const t = this.state.travel && s.svc !== svcId ? 30 : 0;
         return s.end + t <= st || (!this.isEleve(s.svc) && en + t <= s.start);
@@ -269,13 +300,15 @@ export class Planner {
         { week: w, day: 0, start: 1080, end: 1230 },
         { week: w, day: 1, start: 1080, end: 1230 },
         { week: w, day: 5, start: 480, end: 720 },
-      ];
+      ].filter((s) => !this.blocked(svcId, s.day, s.start, s.end));
     }
     const out: Slot[] = [];
     const sunday = this.week(w0).some((s) => s.svc === svcId && s.day === 6);
     for (let d = 0; d < 5 && out.length < 2; d++) {
       if (d === 0 && sunday) continue;
       const st = (this.off(d, w) ?? 900) + this.fromWork;
+      if (this.svc(svcId).exDays.includes(d)) continue;
+      if (this.blocked(svcId, d, st, st + 120)) continue;
       if (st + 120 <= DAY_END)
         out.push({ week: w, day: d, start: st, end: st + 120 });
     }
@@ -308,6 +341,10 @@ export class Planner {
         )
       ) {
         return `${S.first} a déjà cours ce jour-là, la veille ou le lendemain.`;
+      }
+      const blocks = this.blocksOn(it.svc, d);
+      if (blocks.length) {
+        return `Pas de créneau de 2 h libre ce jour-là (indisponible ${blocks.map(blockLabel).join(', ')}).`;
       }
       return this.state.travel
         ? 'Pas de créneau de 2 h libre ce jour-là (trajets, fin à 21h30).'
@@ -746,6 +783,9 @@ export class Planner {
       (S.notAfter != null ? ` · fini avant ${fmt(S.notAfter)}` : '') +
       (S.fixed.length
         ? ` · fixe le ${S.fixed.map((f) => `${dayNamesLower[f.day]} ${fmt(f.start)}`).join(', ')}`
+        : '') +
+      (S.unavailable.length
+        ? ` · indisponible le ${S.unavailable.map((b) => `${dayNamesLower[b.day]} ${blockLabel(b)}`).join(', ')}`
         : '')
     );
   }

@@ -24,6 +24,7 @@ const eleve = (id: string, extra: Partial<ServiceData> = {}): ServiceData => ({
   position: 0,
   deletedAt: null,
   fixed: [],
+  unavailable: [],
   ...extra,
 });
 
@@ -112,6 +113,7 @@ function demoState(): PlanState {
     baseSlots,
     travel: true,
     cancelled: new Set(),
+    tutorUnavailable: [],
   };
 }
 
@@ -236,5 +238,37 @@ describe('Planner', () => {
     expect(p.items().find((i) => i.key === due.id)?.placed).toBeNull();
     // Déjà annulé : rien à faire.
     expect(p.cancelRattrapage(due.id)).toBeNull();
+  });
+
+  it('respecte les indisponibilités de l’élève et du répétiteur', () => {
+    const state = demoState();
+    // Ange indisponible le samedi après 12h ; répétiteur indisponible le dimanche avant 12h.
+    state.services.get('ange')!.unavailable = [
+      { day: 5, start: 720, end: 1440 },
+    ];
+    state.tutorUnavailable = [{ day: 6, start: 0, end: 720 }];
+    const p = planner(state);
+    // Samedi : seulement le matin.
+    expect(p.slotOn('ange', 5, [], 0)).toMatchObject({ start: 480, end: 600 });
+    expect(
+      p.slotOn(
+        'ange',
+        5,
+        [p.week(0)[0]].map((s) => ({
+          ...s,
+          day: 5,
+          start: 480,
+          end: 660,
+          svc: 'ma',
+        })),
+        0,
+      ),
+    ).toBeNull();
+    // Dimanche : pas avant 12h, ni pour un élève ni pour Succès Group.
+    expect(p.slotOn('ange', 6, [], 0)).toMatchObject({ start: 720, end: 840 });
+    expect(p.slotOn('ma', 6, [], 0)).toMatchObject({ start: 840, end: 1080 });
+    expect(p.ruleOf(p.svc('ange'))).toContain(
+      'indisponible le samedi après 12h',
+    );
   });
 });

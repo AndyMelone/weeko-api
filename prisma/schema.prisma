@@ -57,12 +57,13 @@ model Service {
   /// Archivé (suppression douce) : ignoré par le planning, rien n'est effacé.
   deletedAt  DateTime?
 
-  fixed     FixedSlot[]
-  classes   SchoolClass[]
-  sessions  Session[]
-  dues      Due[]
-  history   HistoryEntry[]
-  baseSlots BaseSlot[]
+  fixed       FixedSlot[]
+  unavailable Unavailability[]
+  classes     SchoolClass[]
+  sessions    Session[]
+  dues        Due[]
+  history     HistoryEntry[]
+  baseSlots   BaseSlot[]
 }
 
 /// Jour fixe d'un élève (séance de 2 h).
@@ -91,25 +92,25 @@ model SchoolClass {
 }
 
 model Session {
-  id      String        @id @default(cuid())
-  week    Int
-  day     Int
-  start   Int
-  end     Int
-  svc     String
-  service Service       @relation(fields: [svc], references: [id], onDelete: Cascade)
-  cls     String?
-  klass   SchoolClass?  @relation(fields: [cls], references: [id], onDelete: Cascade)
-  status  SessionStatus @default(prevue)
-  kind    SessionKind   @default(normal)
+  id          String        @id @default(cuid())
+  week        Int
+  day         Int
+  start       Int
+  end         Int
+  svc         String
+  service     Service       @relation(fields: [svc], references: [id], onDelete: Cascade)
+  cls         String?
+  klass       SchoolClass?  @relation(fields: [cls], references: [id], onDelete: Cascade)
+  status      SessionStatus @default(prevue)
+  kind        SessionKind   @default(normal)
   /// Séance due rattrapée par cette séance.
-  dueId   String?
-  who     Who?
-  motif   String        @default("")
-  noRedo  Boolean       @default(false)
-  fixed   Boolean       @default(false)
+  dueId       String?
+  who         Who?
+  motif       String        @default("")
+  noRedo      Boolean       @default(false)
+  fixed       Boolean       @default(false)
   /// Issue du planning de base : conservée d'une génération à l'autre.
-  base    Boolean       @default(false)
+  base        Boolean       @default(false)
   /// Annulée (rattrapage retiré) : ignorée par le planning, jamais effacée.
   cancelledAt DateTime?
 
@@ -186,4 +187,16 @@ model Settings {
   /// élèves, 30 min depuis le travail). Désactivé : séances bout à bout.
   travel    Boolean  @default(false)
   updatedAt DateTime @updatedAt
+}
+
+/// Plage indisponible : pour un élève, ou pour le répétiteur (serviceId vide).
+model Unavailability {
+  id        String   @id @default(cuid())
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  day       Int
+  start     Int
+  end       Int
+
+  @@index([serviceId])
 }
