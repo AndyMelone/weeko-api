@@ -24,6 +24,15 @@ en prod, `node dist/prisma/seed.js`.
 
 Tests : `npm test` (solveur, sans base) · `npm run test:e2e` (base requise).
 
+## Déploiement (Railway)
+
+- Service `weeko-api` relié à ce dépôt (branche `main`), base `Postgres` du projet.
+- Variables : `DATABASE_URL=${{Postgres.DATABASE_URL}}?schema=weeko` (tables isolées
+  dans le schéma `weeko`) et `API_KEY` (clé de production, différente de la clé locale).
+- `npm run start:prod` applique les migrations (`prisma migrate deploy`) puis démarre l'API.
+- Remplir la base (vide puis recrée tout) : `railway ssh -s weeko-api -- node dist/prisma/seed.js`.
+- URL : https://weeko-api-production.up.railway.app/api
+
 ## Clé API
 
 Toutes les routes exigent l'en-tête `x-api-key` égal à `API_KEY` (fichier `.env`), sauf `GET /health`.
