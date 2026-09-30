@@ -5,7 +5,8 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
+  // « / » reste hors préfixe : page d'accueil publique du domaine.
+  app.setGlobalPrefix('api', { exclude: [''] });
   app.enableCors();
   app.useGlobalPipes(
     new ValidationPipe({

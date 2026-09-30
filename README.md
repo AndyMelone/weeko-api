@@ -31,7 +31,7 @@ Tests : `npm test` (solveur, sans base) · `npm run test:e2e` (base requise).
   dans le schéma `weeko`) et `API_KEY` (clé de production, différente de la clé locale).
 - `npm run start:prod` applique les migrations (`prisma migrate deploy`) puis démarre l'API.
 - Remplir la base (vide puis recrée tout) : `railway ssh -s weeko-api -- node dist/prisma/seed.js`.
-- URL : https://weeko-api-production.up.railway.app/api
+- URL : https://weeko.melone.info/api (domaine perso, via Cloudflare) · secours : https://weeko-api-production.up.railway.app/api
 
 ## Clé API
 

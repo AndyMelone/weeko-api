@@ -22,6 +22,15 @@ describe('API (e2e)', () => {
 
   afterEach(() => app.close());
 
+  it('/ (GET) est public', () => {
+    return request(app.getHttpServer())
+      .get('/')
+      .expect(200)
+      .expect((res) =>
+        expect((res.body as { name: string }).name).toBe('weeko-api'),
+      );
+  });
+
   it('/health (GET) est public', () => {
     return request(app.getHttpServer())
       .get('/health')
