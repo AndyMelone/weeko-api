@@ -5,7 +5,9 @@ import { dayShort, parseTime, range } from '../planning/formats';
 import { Planner } from '../planning/planner';
 import { PlanningRepository } from '../planning/planning.repository';
 import { PrismaService } from '../prisma/prisma.service';
+import { toBlocks } from '../planning/dto/block.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { PaymentDto } from './dto/payment.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 
 /** Palette des nouveaux élèves (voir ServiceColors.palette dans ../weeko/lib/core/theme/app_colors.dart). */
@@ -95,6 +97,7 @@ export class StudentsService {
         color: STUDENT_PALETTE[used % STUDENT_PALETTE.length],
         position: (last._max.position ?? 0) + 1,
         fixed: { create: this.fixed(dto) },
+        unavailable: { create: toBlocks(dto.unavailable ?? []) },
       },
     });
     return this.get(created.id);
@@ -109,9 +112,34 @@ export class StudentsService {
         ...(dto.fixed && {
           fixed: { deleteMany: {}, create: this.fixed(dto) },
         }),
+        ...(dto.unavailable && {
+          unavailable: { deleteMany: {}, create: toBlocks(dto.unavailable) },
+        }),
       },
     });
     return this.get(id);
+  }
+
+  async addPayment(id: string, dto: PaymentDto) {
+    await this.ensure(id);
+    return this.prisma.payment.create({
+      data: {
+        serviceId: id,
+        amount: dto.amount,
+        paidOn: dto.date,
+        note: dto.note?.trim() ?? '',
+      },
+    });
+  }
+
+  /** Annulation douce d'un paiement (la ligne reste en base). */
+  async removePayment(id: string, paymentId: string) {
+    const { count } = await this.prisma.payment.updateMany({
+      where: { id: paymentId, serviceId: id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (!count)
+      throw new NotFoundException(`Paiement ${paymentId} introuvable`);
   }
 
   /** Suppression douce : l'élève est archivé, ses séances et son historique restent en base. */
@@ -157,6 +185,8 @@ export class StudentsService {
       out.phone = dto.phone.replace(/\D/g, '');
       out.phoneLabel = dto.phone.trim() || 'numéro à compléter';
     }
+    if (dto.rate !== undefined) out.rate = dto.rate;
+    if (dto.billing !== undefined) out.billing = dto.billing;
     return out as Prisma.ServiceUpdateInput & Prisma.ServiceCreateInput;
   }
 

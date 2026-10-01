@@ -11,7 +11,10 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  IsIn,
+  ValidateIf,
 } from 'class-validator';
+import { BlockDto } from '../../planning/dto/block.dto';
 
 const HH_MM = /^(|([01]\d|2[0-3]):[0-5]\d)$/;
 
@@ -67,4 +70,24 @@ export class CreateStudentDto {
   @ValidateNested({ each: true })
   @Type(() => FixedDayDto)
   fixed?: FixedDayDto[];
+
+  /** Plages indisponibles (remplacent les précédentes). */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BlockDto)
+  unavailable?: BlockDto[];
+
+  /** Tarif en FCFA (null = aucun). */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(10_000_000)
+  rate?: number | null;
+
+  /** « seance » : par séance faite ; « mois » : forfait mensuel. */
+  @IsOptional()
+  @IsIn(['seance', 'mois'])
+  billing?: 'seance' | 'mois';
 }

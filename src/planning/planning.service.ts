@@ -11,7 +11,9 @@ import {
   weekNum,
   weekRange,
 } from './formats';
+import { CancelDto } from './dto/cancel.dto';
 import { PlaceDto } from './dto/place.dto';
+import { SlotDto } from './dto/slot.dto';
 import { PointerDto } from './dto/pointer.dto';
 import { UpdatePrepDto } from './dto/update-prep.dto';
 import { Planner, RattItem, SessionData, Slot, WeekChange } from './planner';
@@ -19,6 +21,11 @@ import { PlanningRepository } from './planning.repository';
 import { PrismaService } from '../prisma/prisma.service';
 
 const WEEK_CHANGES: WeekChange[] = ['normal', 'une', 'absent'];
+
+/** Début de la séance (UTC = heure d'Abidjan). */
+function startsAt(s: { week: number; day: number; start: number }) {
+  return new Date(dateOf(s.week, s.day).getTime() + s.start * 60_000);
+}
 
 @Injectable()
 export class PlanningService {
@@ -28,7 +35,7 @@ export class PlanningService {
   ) {}
   /** Tout l'état, pour le premier chargement de l'app. */
   async state() {
-    const [state, legacy] = await Promise.all([
+    const [state, legacy, payments, settings] = await Promise.all([
       this.repo.read((p) => ({
         services: [...p.state.services.values()],
         classes: [...p.state.classes.values()],
@@ -47,6 +54,18 @@ export class PlanningService {
         where: { service: { deletedAt: null } },
         orderBy: [{ svc: 'asc' }, { position: 'asc' }],
       }),
+      this.prisma.payment.findMany({
+        where: { deletedAt: null, service: { deletedAt: null } },
+        orderBy: [{ paidOn: 'desc' }, { createdAt: 'desc' }],
+        select: {
+          id: true,
+          serviceId: true,
+          amount: true,
+          paidOn: true,
+          note: true,
+        },
+      }),
+      this.prisma.settings.findUnique({ where: { id: 1 } }),
     ]);
     // Historique importé, par élève (les séances pointées sont dans sessions).
     const history: Record<
@@ -56,7 +75,15 @@ export class PlanningService {
     for (const { svc, date, time, status, motif } of legacy) {
       (history[svc] ??= []).push({ date, time, status, motif });
     }
-    return { ...state, history };
+    return {
+      ...state,
+      settings: {
+        ...state.settings,
+        calendarToken: settings?.calendarToken ?? null,
+      },
+      history,
+      payments,
+    };
   }
 
   week(w: number) {
@@ -71,9 +98,6 @@ export class PlanningService {
       generated: p.state.generated.has(w),
       prep: p.prepOf(w),
       sessions: this.sorted(p.week(w)).map((s) => this.sessionView(p, s)),
-      unplaced: Object.fromEntries(
-        [...p.state.classes.keys()].map((c) => [c, p.unplaced(c, w)]),
-      ),
     };
   }
 
@@ -173,11 +197,48 @@ export class PlanningService {
   }
   pointer(id: string, dto: PointerDto) {
     return this.repo.mutate((p) => {
-      this.findSession(p, id);
+      const s = this.findSession(p, id);
+      if (!dto.missed && startsAt(s) > new Date()) {
+        throw new BadRequestException(
+          'Séance pas encore commencée : impossible de la marquer faite',
+        );
+      }
       const message = p.savePointer(id, dto);
       return { message, session: this.sessionView(p, p.sessionById(id)!) };
     });
   }
+  move(id: string, to: SlotDto) {
+    this.checkSlot(to);
+    return this.repo.mutate((p) => {
+      this.findSession(p, id);
+      const message = p.moveSession(id, { ...to });
+      if (!message)
+        throw new BadRequestException(
+          'Séance déjà pointée : impossible de la déplacer',
+        );
+      return { message, session: this.sessionView(p, p.sessionById(id)!) };
+    });
+  }
+
+  cancelSession(id: string, dto: CancelDto) {
+    return this.repo.mutate((p) => {
+      this.findSession(p, id);
+      const message = p.cancelSession(id, dto);
+      if (!message)
+        throw new BadRequestException(
+          'Séance déjà pointée : impossible de l’annuler',
+        );
+      return { message };
+    });
+  }
+
+  private checkSlot(s: SlotDto) {
+    if (s.end <= s.start)
+      throw new BadRequestException(
+        'L’heure de fin doit suivre l’heure de début',
+      );
+  }
+
   rattrapages() {
     return this.repo.read((p) => ({
       todoCount: p.todoCount(),
@@ -205,8 +266,10 @@ export class PlanningService {
     return this.repo.mutate((p) => {
       const it = this.findItem(p, key);
       if (it.placed != null) throw new BadRequestException('Déjà placé');
-      const choice =
-        dto.proposal !== undefined
+      if (dto.slot) this.checkSlot(dto.slot);
+      const choice = dto.slot
+        ? { slot: { ...dto.slot } }
+        : dto.proposal !== undefined
           ? { proposal: dto.proposal }
           : { day: dto.day! };
       const res = p.place(it, choice);

@@ -114,7 +114,18 @@ export interface RattItem {
 }
 
 /** Choix d'un créneau : une proposition (index) ou un jour manuel. */
-export type SlotChoice = { proposal: number } | { day: number };
+export type SlotChoice =
+  | { proposal: number }
+  | { day: number }
+  /** Créneau précis (ex. donné par le président de Succès Group). */
+  | { slot: Slot };
+
+/** Annulation d'une séance prévue (absence prévenue). */
+export interface CancelDraft {
+  redo: boolean;
+  who?: Who | null;
+  motif?: string;
+}
 
 export interface PointerDraft {
   missed: boolean;
@@ -355,14 +366,6 @@ export class Planner {
     return 'Pas de créneau Succès Group libre ce jour-là.';
   }
 
-  /** Séances Succès Group demandées mais non placées pour la classe [c]. */
-  unplaced(c: string, w: number, ss?: SessionData[]): number {
-    if (!this.state.generated.has(w) || this.prepOf(w).times[c]) return 0;
-    const placed = this.week(w, ss).filter(
-      (s) => s.cls === c && s.kind !== SessionKind.rattrapage,
-    ).length;
-    return Math.max(0, (this.prepOf(w).counts[c] ?? 0) - placed);
-  }
   items(): RattItem[] {
     const out: RattItem[] = [];
     for (const u of this.state.dues.filter((u) => !u.done)) {
@@ -385,24 +388,6 @@ export class Planner {
             : `${dayShort(ps.week, ps.day)} · ${range(ps.start, ps.end)}`,
       });
     }
-    for (const w of [...this.state.generated].sort((a, b) => a - b)) {
-      for (const c of this.state.classes.values()) {
-        const n = this.unplaced(c.id, w);
-        for (let i = 0; i < n; i++) {
-          out.push({
-            key: `u-${w}${c.id}${i}`,
-            svc: c.siteId,
-            cls: c.id,
-            due: null,
-            week: w,
-            placedSession: null,
-            title: `${c.name} · ${this.svc(c.siteId).name}`,
-            detail: `Séance demandée semaine du ${weekRange(w)}, aucun créneau trouvé par le planning.`,
-            placed: null,
-          });
-        }
-      }
-    }
     // Non casés en premier (tri stable).
     return [
       ...out.filter((i) => i.placed == null),
@@ -422,6 +407,7 @@ export class Planner {
   resolveChoice(it: RattItem, choice: SlotChoice): Slot | null {
     if ('proposal' in choice)
       return this.proposals(it)[choice.proposal] ?? null;
+    if ('slot' in choice) return choice.slot;
     return this.slots(it.svc, { onlyDay: choice.day, w: it.week })[0] ?? null;
   }
 
@@ -456,13 +442,6 @@ export class Planner {
       );
     }
     this.prepFor(p.week);
-    // Séance Succès Group déplacée d'une semaine à l'autre : on transfère le compte.
-    if (!it.due && p.week !== it.week && it.cls) {
-      const a = this.prepFor(it.week);
-      const b = this.prepFor(p.week);
-      a.counts[it.cls] = (a.counts[it.cls] ?? 0) - 1;
-      b.counts[it.cls] = (b.counts[it.cls] ?? 0) + 1;
-    }
     return {
       message: `Placé : ${dayShort(p.week, p.day)} · ${range(p.start, p.end)} · ajouté au planning du jour`,
       session,
@@ -626,36 +605,6 @@ export class Planner {
       }
     }
 
-    const auto = [...this.state.classes.values()].filter(
-      (c) => !prep.times[c.id],
-    );
-    for (const c of auto) {
-      let n = 0;
-      ss = ss.filter(
-        (s) => s.cls !== c.id || isRatt(s) || ++n <= (prep.counts[c.id] ?? 0),
-      );
-    }
-    for (const c of auto) {
-      let need =
-        (prep.counts[c.id] ?? 0) -
-        ss.filter((s) => s.cls === c.id && !isRatt(s)).length;
-      while (need-- > 0) {
-        const sl = this.slots(c.siteId, { w, ss })[0];
-        if (!sl) break;
-        ss.push(
-          blank({
-            id: this.makeId(`g${c.id}`),
-            week: w,
-            day: sl.day,
-            start: sl.start,
-            end: sl.end,
-            svc: c.siteId,
-            cls: c.id,
-          }),
-        );
-      }
-    }
-
     const others = this.state.sessions.filter((s) => s.week !== w);
     let nd = this.state.dues.map((u) =>
       u.placedSession != null &&
@@ -667,6 +616,8 @@ export class Planner {
     nd = nd.map((u) => {
       if (u.done || u.placedSession != null || prep.include[u.id] === false)
         return u;
+      // Succès Group : la date du rattrapage est donnée par le président.
+      if (!this.isEleve(u.svc)) return u;
       const sl = this.slots(u.svc, { w, ss })[0];
       if (!sl) return u;
       const id = this.makeId(`r${u.id}`);
@@ -690,11 +641,52 @@ export class Planner {
     this.state.dues = nd;
     this.state.preps.set(w, prep);
     this.state.generated.add(w);
-    const unpl = [...this.state.classes.keys()].reduce(
-      (a, c) => a + this.unplaced(c, w),
-      0,
+    return `Planning du ${weekRange(w)} : ${ss.length} séances`;
+  }
+
+  /** Déplace ou change l'heure d'une séance prévue. Null si elle est déjà pointée. */
+  moveSession(id: string, to: Slot): string | null {
+    const s = this.sessionById(id);
+    if (!s || s.status !== SessionStatus.prevue) return null;
+    this.state.sessions = this.state.sessions.map((x) =>
+      x.id === id
+        ? { ...x, week: to.week, day: to.day, start: to.start, end: to.end }
+        : x,
     );
-    return `Planning du ${weekRange(w)} : ${ss.length} séances${unpl > 0 ? ` · ${unpl} non placée${unpl > 1 ? 's' : ''}` : ''}`;
+    this.prepFor(to.week);
+    return `Séance déplacée : ${dayShort(to.week, to.day)} · ${range(to.start, to.end)}`;
+  }
+
+  /**
+   * Annule une séance prévue (absence prévenue). Elle sort du planning
+   * (archivée) ; avec [redo], une séance à rattraper est créée. Un rattrapage
+   * annulé repasse simplement « à caser ». Null si la séance est déjà pointée.
+   */
+  cancelSession(id: string, d: CancelDraft): string | null {
+    const s = this.sessionById(id);
+    if (!s || s.status !== SessionStatus.prevue) return null;
+    if (s.kind === SessionKind.rattrapage && s.dueId) {
+      const due = this.state.dues.find((u) => u.id === s.dueId);
+      if (due?.placedSession === s.id) return this.cancelRattrapage(due.id);
+    }
+    this.state.sessions = this.state.sessions.filter((x) => x.id !== id);
+    this.state.cancelled.add(id);
+    if (!d.redo) return 'Séance annulée · pas de rattrapage';
+    this.state.dues = [
+      ...this.state.dues,
+      {
+        id: this.makeId('d'),
+        svc: s.svc,
+        cls: s.cls,
+        from: dayShort(s.week, s.day),
+        who: d.who ?? Who.eleve,
+        motif: d.motif ?? '',
+        placedSession: null,
+        done: false,
+        sourceId: s.id,
+      },
+    ];
+    return 'Séance annulée · 1 séance à rattraper créée';
   }
 
   /**

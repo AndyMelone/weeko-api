@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { PaymentDto } from './dto/payment.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { StudentsService } from './students.service';
 
@@ -40,5 +41,19 @@ export class StudentsController {
   @HttpCode(204)
   remove(@Param('id') id: string) {
     return this.students.remove(id);
+  }
+
+  @Post(':id/payments')
+  addPayment(@Param('id') id: string, @Body() dto: PaymentDto) {
+    return this.students.addPayment(id, dto);
+  }
+
+  @Delete(':id/payments/:paymentId')
+  @HttpCode(204)
+  removePayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+  ) {
+    return this.students.removePayment(id, paymentId);
   }
 }

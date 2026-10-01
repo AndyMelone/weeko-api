@@ -16,7 +16,9 @@ import {
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBaseSlotDto } from './dto/create-base-slot.dto';
+import { CancelDto } from './dto/cancel.dto';
 import { PlaceDto } from './dto/place.dto';
+import { SlotDto } from './dto/slot.dto';
 import { PointerDto } from './dto/pointer.dto';
 import { UpdatePrepDto } from './dto/update-prep.dto';
 import { PlanningService } from './planning.service';
@@ -72,6 +74,17 @@ export class PlanningController {
   @HttpCode(200)
   pointer(@Param('id') id: string, @Body() dto: PointerDto) {
     return this.planning.pointer(id, dto);
+  }
+
+  @Patch('sessions/:id')
+  move(@Param('id') id: string, @Body() dto: SlotDto) {
+    return this.planning.move(id, dto);
+  }
+
+  @Post('sessions/:id/cancel')
+  @HttpCode(200)
+  cancelSession(@Param('id') id: string, @Body() dto: CancelDto) {
+    return this.planning.cancelSession(id, dto);
   }
 
   @Get('sessions/:id/ics')

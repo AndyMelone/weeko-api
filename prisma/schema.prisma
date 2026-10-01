@@ -57,8 +57,12 @@ model Service {
   /// Archivé (suppression douce) : ignoré par le planning, rien n'est effacé.
   deletedAt  DateTime?
 
+  /// Tarif en FCFA : par séance faite (billing = "seance") ou forfait mensuel ("mois").
+  rate        Int?
+  billing     String           @default("seance")
   fixed       FixedSlot[]
   unavailable Unavailability[]
+  payments    Payment[]
   classes     SchoolClass[]
   sessions    Session[]
   dues        Due[]
@@ -78,13 +82,13 @@ model FixedSlot {
 }
 
 model SchoolClass {
-  id           String  @id @default(cuid())
+  id           String    @id @default(cuid())
   name         String
   siteId       String
-  site         Service @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  site         Service   @relation(fields: [siteId], references: [id], onDelete: Cascade)
   /// Nombre de séances par défaut dans la préparation d'une semaine.
-  defaultCount Int     @default(0)
-  position     Int     @default(0)
+  defaultCount Int       @default(0)
+  position     Int       @default(0)
   /// Archivée (suppression douce) : ignorée par le planning, rien n'est effacé.
   deletedAt    DateTime?
 
@@ -184,11 +188,13 @@ model HistoryEntry {
 
 /// Réglages globaux (ligne unique, id = 1).
 model Settings {
-  id        Int      @id @default(1)
+  id            Int      @id @default(1)
   /// Compter les trajets (30 min vers un élève ou un site, 10 min entre deux
   /// élèves, 30 min depuis le travail). Désactivé : séances bout à bout.
-  travel    Boolean  @default(false)
-  updatedAt DateTime @updatedAt
+  travel        Boolean  @default(false)
+  /// Jeton secret du flux agenda (.ics) ; null = pas de flux.
+  calendarToken String?  @unique
+  updatedAt     DateTime @updatedAt
 }
 
 /// Plage indisponible : pour un élève, ou pour le répétiteur (serviceId vide).
@@ -199,6 +205,22 @@ model Unavailability {
   day       Int
   start     Int
   end       Int
+
+  @@index([serviceId])
+}
+
+/// Paiement reçu d'un parent (montant en FCFA).
+model Payment {
+  id        String    @id @default(cuid())
+  serviceId String
+  service   Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  amount    Int
+  /// Date du paiement « YYYY-MM-DD ».
+  paidOn    String
+  note      String    @default("")
+  createdAt DateTime  @default(now())
+  /// Annulé (suppression douce).
+  deletedAt DateTime?
 
   @@index([serviceId])
 }

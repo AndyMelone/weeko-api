@@ -24,6 +24,8 @@ const eleve = (id: string, extra: Partial<ServiceData> = {}): ServiceData => ({
   phoneLabel: '',
   position: 0,
   deletedAt: null,
+  rate: null,
+  billing: 'seance',
   fixed: [],
   unavailable: [],
   ...extra,
@@ -209,20 +211,78 @@ describe('Planner', () => {
       [0, 1080, 1230],
       [2, 1020, 1170],
     ]);
-    expect(p.unplaced('c1', 1)).toBe(0);
     // Aucun élève ne chevauche le créneau.
     const wed = p.week(1).filter((s) => s.day === 2 && s.cls == null);
     expect(wed.every((s) => s.end <= 1020 || s.start >= 1170)).toBe(true);
   });
 
-  it('séance Succès Group non placée apparaît dans les rattrapages et peut être casée', () => {
+  it('Succès Group : aucune séance placée automatiquement sans créneau saisi', () => {
     const p = planner();
-    // Préparation sans créneaux choisis : placement automatique selon counts.
-    p.state.preps.set(0, { ...p.defaultPrep(), counts: { c1: 3 }, times: {} });
-    const items = p.items().filter((i) => !i.due);
-    expect(items.length).toBeGreaterThan(0);
-    const res = p.place(items[0], { proposal: 0 });
-    expect(res?.message).toMatch(/^Placé : /);
+    p.state.preps.set(1, {
+      ...p.defaultPrep(),
+      counts: { c1: 3, c3: 2 },
+      times: {},
+    });
+    p.generate(1);
+    // Seules restent les séances du planning de base (lundi c1, vendredi c3).
+    expect(p.week(1).filter((s) => s.cls != null && !s.base)).toHaveLength(0);
+    expect(p.items().filter((i) => !i.due)).toHaveLength(0);
+  });
+
+  it('Succès Group manquée : pas casée automatiquement, placée au créneau donné', () => {
+    const p = planner();
+    p.savePointer('s2', { missed: true, who: 'eleve', motif: 'Grève' });
+    p.generate(1);
+    const due = p.state.dues[0];
+    expect(due.cls).toBe('c1');
+    expect(due.placedSession).toBeNull();
+    const it = p.item(due.id)!;
+    const res = p.place(it, {
+      slot: { week: 1, day: 3, start: 1020, end: 1170 },
+    });
+    expect(res?.session).toMatchObject({
+      week: 1,
+      day: 3,
+      start: 1020,
+      end: 1170,
+      kind: 'rattrapage',
+      cls: 'c1',
+    });
+  });
+
+  it('déplacer une séance prévue (jour et heures)', () => {
+    const p = planner();
+    expect(
+      p.moveSession('s3', { week: 0, day: 3, start: 1000, end: 1120 }),
+    ).toMatch(/^Séance déplacée/);
+    expect(p.sessionById('s3')).toMatchObject({
+      day: 3,
+      start: 1000,
+      end: 1120,
+    });
+    p.savePointer('s1', { missed: false });
+    expect(
+      p.moveSession('s1', { week: 0, day: 2, start: 900, end: 1020 }),
+    ).toBeNull();
+  });
+
+  it('annuler une séance prévue : archivée, avec ou sans rattrapage', () => {
+    const p = planner();
+    expect(
+      p.cancelSession('s3', { redo: true, who: 'eleve', motif: 'Voyage' }),
+    ).toBe('Séance annulée · 1 séance à rattraper créée');
+    expect(p.sessionById('s3')).toBeUndefined();
+    expect(p.state.cancelled.has('s3')).toBe(true);
+    expect(p.state.dues[0]).toMatchObject({
+      svc: 'ange',
+      sourceId: 's3',
+      motif: 'Voyage',
+      placedSession: null,
+    });
+    expect(p.cancelSession('s4', { redo: false })).toBe(
+      'Séance annulée · pas de rattrapage',
+    );
+    expect(p.state.dues).toHaveLength(1);
   });
 
   it('annuler un rattrapage casé le remet à caser', () => {
