@@ -202,7 +202,17 @@ export class PlanningService {
 
   private checkWeek(p: Planner, list: WeekSessionDto[]) {
     const ids = new Set<string>();
+    const days = new Set<string>();
     for (const s of list) {
+      // Règle bloquante : jamais deux séances le même jour pour un élève.
+      if (p.state.services.get(s.svc)?.kind === 'eleve') {
+        const key = `${s.svc}:${s.day}`;
+        if (days.has(key))
+          throw new BadRequestException(
+            `${p.svc(s.svc).first} aurait deux séances le même jour`,
+          );
+        days.add(key);
+      }
       if (ids.has(s.id))
         throw new BadRequestException(`Séance en double : ${s.id}`);
       ids.add(s.id);
