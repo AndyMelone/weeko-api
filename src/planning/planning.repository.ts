@@ -6,6 +6,9 @@ import { DueData, PlanState, Planner, PrepData, SessionData } from './planner';
 
 type Tx = Prisma.TransactionClient;
 
+/** Sans classe, ou classe non archivée. */
+const LIVE_CLASS = { OR: [{ cls: null }, { klass: { deletedAt: null } }] };
+
 const SESSION_FIELDS = [
   'week',
   'day',
@@ -89,23 +92,26 @@ export class PlanningRepository {
       include: { fixed: { orderBy: { day: 'asc' } }, unavailable: blockFields },
       omit: { createdAt: true, updatedAt: true },
     });
+    // Classes archivées (ou de sites archivés) : invisibles, avec leurs séances.
     const classes = await db.schoolClass.findMany({
+      where: { deletedAt: null, site: { deletedAt: null } },
+      omit: { deletedAt: true },
       orderBy: [{ position: 'asc' }, { name: 'asc' }],
     });
     // Séances annulées : invisibles pour le planning.
     const sessions = await db.session.findMany({
-      where: { service: { deletedAt: null }, cancelledAt: null },
+      where: { service: { deletedAt: null }, cancelledAt: null, ...LIVE_CLASS },
       omit: { cancelledAt: true },
       orderBy: [{ week: 'asc' }, { day: 'asc' }, { start: 'asc' }],
     });
     const dues = await db.due.findMany({
-      where: { service: { deletedAt: null } },
+      where: { service: { deletedAt: null }, ...LIVE_CLASS },
       orderBy: { createdAt: 'asc' },
       omit: { createdAt: true },
     });
     const preps = await db.weekPrep.findMany();
     const baseSlots = await db.baseSlot.findMany({
-      where: { service: { deletedAt: null } },
+      where: { service: { deletedAt: null }, ...LIVE_CLASS },
       orderBy: [{ day: 'asc' }, { start: 'asc' }],
     });
     const settings = await db.settings.findUnique({ where: { id: 1 } });

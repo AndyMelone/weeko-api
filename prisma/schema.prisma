@@ -85,6 +85,8 @@ model SchoolClass {
   /// Nombre de séances par défaut dans la préparation d'une semaine.
   defaultCount Int     @default(0)
   position     Int     @default(0)
+  /// Archivée (suppression douce) : ignorée par le planning, rien n'est effacé.
+  deletedAt    DateTime?
 
   sessions  Session[]
   dues      Due[]

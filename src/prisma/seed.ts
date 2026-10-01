@@ -61,6 +61,14 @@ const services = [
     color: '#8A5F18',
     kind: 'site',
   },
+  {
+    id: 'ec',
+    name: 'Epp Citadel',
+    first: 'Epp Citadel',
+    code: 'EC',
+    color: '#4A5568',
+    kind: 'site',
+  },
 ] as const;
 
 const classes = [
@@ -70,6 +78,9 @@ const classes = [
   { id: 'c3', name: 'Terminale D', siteId: 'ng', defaultCount: 2 },
   { id: 'c4', name: 'Terminale C', siteId: 'ng', defaultCount: 0 },
   { id: 'c6', name: 'Terminale A', siteId: 'ng', defaultCount: 0 },
+  { id: 'c7', name: 'Terminale D', siteId: 'ec', defaultCount: 0 },
+  { id: 'c8', name: 'Terminale C', siteId: 'ec', defaultCount: 0 },
+  { id: 'c9', name: 'Terminale A', siteId: 'ec', defaultCount: 0 },
 ];
 
 /** Planning de base (w = 0). */
@@ -193,7 +204,7 @@ async function main() {
     await tx.unavailability.createMany({ data: unavailable });
   });
   console.log(
-    'Seed OK : 3 élèves, 2 sites, 6 classes, 9 séances, 2 séances dues, 3 indisponibilités.',
+    'Seed OK : 3 élèves, 3 sites, 9 classes, 9 séances, 2 séances dues, 3 indisponibilités.',
   );
 }
 

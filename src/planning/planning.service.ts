@@ -204,7 +204,7 @@ export class PlanningService {
   place(key: string, dto: PlaceDto) {
     return this.repo.mutate((p) => {
       const it = this.findItem(p, key);
-      if (it.placed != null) throw new BadRequestException('Déjà casé');
+      if (it.placed != null) throw new BadRequestException('Déjà placé');
       const choice =
         dto.proposal !== undefined
           ? { proposal: dto.proposal }
@@ -219,18 +219,18 @@ export class PlanningService {
     });
   }
 
-  /** Annule un rattrapage casé et remet la séance due dans les rattrapages. */
+  /** Annule un rattrapage placé et remet la séance due dans les rattrapages. */
   cancel(key: string) {
     return this.repo.mutate((p) => {
       const it = this.findItem(p, key);
       if (!it.due)
         throw new BadRequestException(
-          'Seul un rattrapage casé peut être annulé',
+          'Seul un rattrapage placé peut être annulé',
         );
       const message = p.cancelRattrapage(it.due.id);
       if (!message) {
         throw new BadRequestException(
-          'Rien à annuler : pas casé, ou séance déjà pointée',
+          'Rien à annuler : pas placé, ou séance déjà pointée',
         );
       }
       return { message };

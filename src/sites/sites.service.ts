@@ -20,9 +20,14 @@ export class SitesService {
 
   listSites() {
     return this.prisma.service.findMany({
-      where: { kind: 'site' },
+      where: { kind: 'site', deletedAt: null },
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
-      include: { classes: { orderBy: [{ position: 'asc' }, { name: 'asc' }] } },
+      include: {
+        classes: {
+          where: { deletedAt: null },
+          orderBy: [{ position: 'asc' }, { name: 'asc' }],
+        },
+      },
     });
   }
 
@@ -58,13 +63,18 @@ export class SitesService {
     });
   }
 
+  /** Suppression douce : le site disparaît du planning, son historique est conservé. */
   async removeSite(id: string) {
     await this.ensureSite(id);
-    await this.prisma.service.delete({ where: { id } });
+    await this.prisma.service.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 
   listClasses() {
     return this.prisma.schoolClass.findMany({
+      where: { deletedAt: null, site: { deletedAt: null } },
       orderBy: [{ position: 'asc' }, { name: 'asc' }],
     });
   }
@@ -92,9 +102,13 @@ export class SitesService {
     });
   }
 
+  /** Suppression douce : la classe disparaît du planning, son historique est conservé. */
   async removeClass(id: string) {
     await this.ensureClass(id);
-    await this.prisma.schoolClass.delete({ where: { id } });
+    await this.prisma.schoolClass.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 
   private async ensureSite(
@@ -103,16 +117,18 @@ export class SitesService {
   ) {
     const s = await this.prisma.service.findUnique({
       where: { id },
-      select: { kind: true },
+      select: { kind: true, deletedAt: true },
     });
-    if (!s || s.kind !== 'site') throw new Err(`Site ${id} introuvable`);
+    if (!s || s.kind !== 'site' || s.deletedAt)
+      throw new Err(`Site ${id} introuvable`);
   }
 
   private async ensureClass(id: string) {
     const c = await this.prisma.schoolClass.findUnique({
       where: { id },
-      select: { id: true },
+      select: { deletedAt: true },
     });
-    if (!c) throw new NotFoundException(`Classe ${id} introuvable`);
+    if (!c || c.deletedAt)
+      throw new NotFoundException(`Classe ${id} introuvable`);
   }
 }

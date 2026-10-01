@@ -222,7 +222,7 @@ describe('Planner', () => {
     const items = p.items().filter((i) => !i.due);
     expect(items.length).toBeGreaterThan(0);
     const res = p.place(items[0], { proposal: 0 });
-    expect(res?.message).toMatch(/^Casé : /);
+    expect(res?.message).toMatch(/^Placé : /);
   });
 
   it('annuler un rattrapage casé le remet à caser', () => {
@@ -232,7 +232,7 @@ describe('Planner', () => {
     const due = p.state.dues[0];
     const placed = due.placedSession!;
     expect(p.cancelRattrapage(due.id)).toBe(
-      'Rattrapage annulé · séance à recaser',
+      'Rattrapage annulé · séance à replacer',
     );
     expect(p.sessionById(placed)).toBeUndefined();
     expect(p.state.cancelled.has(placed)).toBe(true);

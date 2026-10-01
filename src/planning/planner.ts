@@ -54,7 +54,7 @@ export type ServiceData = Omit<Service, 'createdAt' | 'updatedAt'> & {
   fixed: { day: number; start: number }[];
   unavailable: TimeBlock[];
 };
-export type ClassData = SchoolClass;
+export type ClassData = Omit<SchoolClass, 'deletedAt'>;
 export type SessionData = Omit<Session, 'cancelledAt'>;
 export type DueData = Omit<Due, 'createdAt'>;
 export type BaseSlotData = BaseSlot;
@@ -464,7 +464,7 @@ export class Planner {
       b.counts[it.cls] = (b.counts[it.cls] ?? 0) + 1;
     }
     return {
-      message: `Casé : ${dayShort(p.week, p.day)} · ${range(p.start, p.end)} · ajouté au planning du jour`,
+      message: `Placé : ${dayShort(p.week, p.day)} · ${range(p.start, p.end)} · ajouté au planning du jour`,
       session,
     };
   }
@@ -714,7 +714,7 @@ export class Planner {
     this.state.dues = this.state.dues.map((x) =>
       x.id === dueId ? { ...x, placedSession: null } : x,
     );
-    return 'Rattrapage annulé · séance à recaser';
+    return 'Rattrapage annulé · séance à replacer';
   }
   /** Enregistre le pointage. Retourne le texte du toast. */
   savePointer(sessionId: string, d: PointerDraft): string {
@@ -769,7 +769,7 @@ export class Planner {
         : 'Séance faite enregistrée';
     if (!redo) return 'Séance manquée · pas de rattrapage';
     return isRatt
-      ? 'Rattrapage manqué : séance à recaser'
+      ? 'Rattrapage manqué : séance à replacer'
       : 'Séance manquée · 1 séance à rattraper créée';
   }
   /** Règle affichée sur la fiche élève. */
