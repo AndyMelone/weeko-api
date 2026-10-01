@@ -144,9 +144,10 @@ export class PlanningService {
         if (!Number.isInteger(n) || n < 0 || n > 7)
           throw new BadRequestException(`counts.${c} : entier 0–7`);
       }
+      // Créneaux choisis : par classe (Succès Group) ou par élève (facultatif).
       for (const [c, ts] of Object.entries(dto.times ?? {})) {
-        if (!p.state.classes.has(c))
-          throw new BadRequestException(`Classe inconnue : ${c}`);
+        if (!p.state.classes.has(c) && !p.state.students.includes(c))
+          throw new BadRequestException(`Classe ou élève inconnu : ${c}`);
         if (!Array.isArray(ts) || ts.length > 7)
           throw new BadRequestException(`times.${c} : 0 à 7 créneaux`);
         for (const t of ts) {
@@ -254,8 +255,33 @@ export class PlanningService {
         throw new BadRequestException(
           'Séance déjà pointée : impossible de la déplacer',
         );
+      this.checkSameDay(p);
       return { message, session: this.sessionView(p, p.sessionById(id)!) };
     });
+  }
+
+  /** Échange jour et heures de deux séances prévues. */
+  swap(id: string, withId: string) {
+    return this.repo.mutate((p) => {
+      this.findSession(p, id);
+      this.findSession(p, withId);
+      const message = p.swapSessions(id, withId);
+      if (!message)
+        throw new BadRequestException(
+          'Seules deux séances prévues (non pointées) peuvent être échangées',
+        );
+      this.checkSameDay(p);
+      return { message };
+    });
+  }
+
+  /** Règle bloquante : jamais deux séances le même jour pour un élève. */
+  private checkSameDay(p: Planner) {
+    const who = p.sameDayConflict();
+    if (who)
+      throw new BadRequestException(
+        `Impossible : ${who} aurait deux séances le même jour`,
+      );
   }
 
   cancelSession(id: string, dto: CancelDto) {

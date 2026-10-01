@@ -285,6 +285,18 @@ describe('Planner', () => {
     expect(p.state.generated.has(1)).toBe(true);
   });
 
+  it('échanger deux séances prévues, jamais deux séances le même jour', () => {
+    const p = planner();
+    // s3 : Ange mardi 15h30 ; s6 : Adjé jeudi 17h40.
+    expect(p.swapSessions('s3', 's6')).toMatch(/^Séances échangées/);
+    expect(p.sessionById('s3')).toMatchObject({ day: 3, start: 1060 });
+    expect(p.sessionById('s6')).toMatchObject({ day: 1, start: 930 });
+    expect(p.sameDayConflict()).toBeNull();
+    // Sondo déplacé le samedi alors qu'il y a déjà cours : refusé.
+    p.moveSession('s4', { week: 0, day: 5, start: 600, end: 720 });
+    expect(p.sameDayConflict()).toBe('sondo');
+  });
+
   it('déplacer une séance prévue (jour et heures)', () => {
     const p = planner();
     expect(
@@ -374,5 +386,25 @@ describe('Planner', () => {
     expect(currentWeek(new Date('2026-10-05T00:00:00Z'))).toBe(0);
     expect(currentWeek(new Date('2026-10-11T23:59:00Z'))).toBe(0);
     expect(currentWeek(new Date('2026-10-12T00:00:00Z'))).toBe(1);
+  });
+
+  it('élève : jour et heure fixés pour la semaine (facultatif), le reste complété', () => {
+    const p = planner();
+    p.updatePrep(1, { times: { ange: [{ day: 3, start: 1020, end: 1140 }] } });
+    p.generate(1);
+    const ange = p
+      .week(1)
+      .filter((s) => s.svc === 'ange' && s.kind === 'normal');
+    expect(
+      ange.some((s) => s.day === 3 && s.start === 1020 && s.end === 1140),
+    ).toBe(true);
+    // 2 séances par semaine : la seconde est placée par le planning.
+    expect(ange).toHaveLength(2);
+    // Sans créneau fixé : placement automatique.
+    p.updatePrep(2, {});
+    p.generate(2);
+    expect(
+      p.week(2).filter((s) => s.svc === 'ange' && s.kind === 'normal'),
+    ).toHaveLength(2);
   });
 });

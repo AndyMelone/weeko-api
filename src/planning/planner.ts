@@ -583,6 +583,34 @@ export class Planner {
       const target = change === 'absent' ? 0 : change === 'une' ? 1 : S.perWeek;
       let n = 0;
       ss = ss.filter((s) => !isNormalOf(s, k) || ++n <= target);
+      // Jour et heure fixés pour cette semaine (facultatif) : remplacent le
+      // placement automatique ; le planning complète s'il en manque.
+      const chosen = change === 'absent' ? [] : (prep.times[k] ?? []);
+      if (chosen.length) {
+        ss = ss.filter((s) => !isNormalOf(s, k));
+        chosen.forEach((t, i) => {
+          const id = `st${k}-${i}-w${w}`;
+          const p = prev.get(id);
+          const same =
+            p && p.day === t.day && p.start === t.start && p.end === t.end;
+          ss.push(
+            blank({
+              id,
+              week: w,
+              day: t.day,
+              start: t.start,
+              end: t.end,
+              svc: k,
+              cls: null,
+              fixed: true,
+              status: same ? p.status : SessionStatus.prevue,
+              who: same ? p.who : null,
+              motif: same ? p.motif : '',
+              noRedo: same ? p.noRedo : false,
+            }),
+          );
+        });
+      }
       // Jours fixes placés en premier.
       for (const fx of S.fixed) {
         const have = ss.filter((s) => isNormalOf(s, k));
@@ -702,6 +730,42 @@ export class Planner {
     this.prepFor(w);
     this.state.generated.add(w);
     return `Planning du ${weekRange(w)} : ${ss.length} séances`;
+  }
+
+  /**
+   * Règle bloquante : un élève n'a jamais deux séances le même jour.
+   * Retourne le prénom de l'élève en défaut, null si la semaine est valide.
+   */
+  sameDayConflict(
+    sessions: SessionData[] = this.state.sessions,
+  ): string | null {
+    const seen = new Set<string>();
+    for (const s of sessions) {
+      if (!this.isEleve(s.svc) || s.status === SessionStatus.manquee) continue;
+      const key = `${s.svc}:${s.week}:${s.day}`;
+      if (seen.has(key)) return this.svc(s.svc).first;
+      seen.add(key);
+    }
+    return null;
+  }
+
+  /** Échange jour et heures de deux séances prévues. Null si l'une est déjà pointée. */
+  swapSessions(a: string, b: string): string | null {
+    const x = this.sessionById(a);
+    const y = this.sessionById(b);
+    if (!x || !y || a === b) return null;
+    if (x.status !== SessionStatus.prevue || y.status !== SessionStatus.prevue)
+      return null;
+    const slot = (s: SessionData) => ({
+      week: s.week,
+      day: s.day,
+      start: s.start,
+      end: s.end,
+    });
+    this.state.sessions = this.state.sessions.map((s) =>
+      s.id === a ? { ...s, ...slot(y) } : s.id === b ? { ...s, ...slot(x) } : s,
+    );
+    return `Séances échangées : ${this.titleOf(x)} ↔ ${this.titleOf(y)}`;
   }
 
   /** Déplace ou change l'heure d'une séance prévue. Null si elle est déjà pointée. */

@@ -144,22 +144,18 @@ describe('API (e2e)', () => {
 
     it('déplacer puis annuler une séance (avec rattrapage)', async () => {
       await api().post('/weeks/50/generate').expect(200);
-      const s = (await sessionsOf(50)).find((x) => x.svc === 'ange')!;
+      const week = await sessionsOf(50);
+      const s = week.find((x) => x.svc === 'ange')!;
+      // Un jour sans séance d'Ange (jamais deux séances le même jour).
+      const day = [0, 1, 2, 3, 4].find(
+        (d) => !week.some((x) => x.svc === 'ange' && x.day === d),
+      )!;
       const moved = await api()
-        .patch(`/sessions/${s.id}`, {
-          week: 50,
-          day: 3,
-          start: 1000,
-          end: 1120,
-        })
+        .patch(`/sessions/${s.id}`, { week: 50, day, start: 1000, end: 1120 })
         .expect(200);
-      expect(moved.body.session).toMatchObject({
-        day: 3,
-        start: 1000,
-        end: 1120,
-      });
+      expect(moved.body.session).toMatchObject({ day, start: 1000, end: 1120 });
       await api()
-        .patch(`/sessions/${s.id}`, { week: 50, day: 3, start: 1000, end: 900 })
+        .patch(`/sessions/${s.id}`, { week: 50, day, start: 1000, end: 900 })
         .expect(400);
       const c = await api()
         .post(`/sessions/${s.id}/cancel`, {

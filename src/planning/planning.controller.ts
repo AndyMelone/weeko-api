@@ -20,6 +20,7 @@ import { CancelDto } from './dto/cancel.dto';
 import { GenerateDto } from './dto/generate.dto';
 import { PlaceDto } from './dto/place.dto';
 import { SlotDto } from './dto/slot.dto';
+import { SwapDto } from './dto/swap.dto';
 import { PointerDto } from './dto/pointer.dto';
 import { UpdatePrepDto } from './dto/update-prep.dto';
 import { PlanningService } from './planning.service';
@@ -83,6 +84,12 @@ export class PlanningController {
   @Patch('sessions/:id')
   move(@Param('id') id: string, @Body() dto: SlotDto) {
     return this.planning.move(id, dto);
+  }
+
+  @Post('sessions/:id/swap')
+  @HttpCode(200)
+  swap(@Param('id') id: string, @Body() dto: SwapDto) {
+    return this.planning.swap(id, dto.with);
   }
 
   @Post('sessions/:id/cancel')
