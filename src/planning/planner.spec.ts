@@ -250,6 +250,41 @@ describe('Planner', () => {
     });
   });
 
+  it('aperçu modifié : enregistré tel quel (échange, suppression de rattrapage)', () => {
+    const p = planner();
+    p.savePointer('s3', { missed: true, who: 'moi', motif: 'Réunion' });
+    // Aperçu calculé sur une copie : rien n'est enregistré.
+    const draft = planner(structuredClone(p.state));
+    draft.generate(1);
+    const preview = draft.week(1);
+    const [a, b] = preview.filter((s) => s.base);
+    const ratt = preview.find((s) => s.kind === SessionKind.rattrapage)!;
+    const edited = preview
+      .filter((s) => s.id !== ratt.id)
+      .map((s) =>
+        s.id === a.id
+          ? { ...s, day: b.day, start: b.start, end: b.end }
+          : s.id === b.id
+            ? { ...s, day: a.day, start: a.start, end: a.end }
+            : s,
+      );
+
+    expect(p.applyWeek(1, edited)).toMatch(/^Planning du 12 – 18 octobre/);
+    const w1 = p.week(1);
+    expect(w1).toHaveLength(preview.length - 1);
+    expect(w1.find((s) => s.id === a.id)).toMatchObject({
+      day: b.day,
+      start: b.start,
+    });
+    expect(w1.find((s) => s.id === b.id)).toMatchObject({
+      day: a.day,
+      start: a.start,
+    });
+    // Rattrapage retiré : la séance due repasse « à placer ».
+    expect(p.state.dues[0].placedSession).toBeNull();
+    expect(p.state.generated.has(1)).toBe(true);
+  });
+
   it('déplacer une séance prévue (jour et heures)', () => {
     const p = planner();
     expect(

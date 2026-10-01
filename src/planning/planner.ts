@@ -113,6 +113,20 @@ export interface RattItem {
   placed: string | null;
 }
 
+/** Séance de la semaine validée depuis l'aperçu. */
+export interface WeekSessionInput {
+  id: string;
+  day: number;
+  start: number;
+  end: number;
+  svc: string;
+  cls?: string | null;
+  kind: SessionKind;
+  dueId?: string | null;
+  fixed: boolean;
+  base: boolean;
+}
+
 /** Choix d'un créneau : une proposition (index) ou un jour manuel. */
 export type SlotChoice =
   | { proposal: number }
@@ -640,6 +654,52 @@ export class Planner {
     this.state.sessions = [...others, ...ss];
     this.state.dues = nd;
     this.state.preps.set(w, prep);
+    this.state.generated.add(w);
+    return `Planning du ${weekRange(w)} : ${ss.length} séances`;
+  }
+
+  /**
+   * Enregistre la semaine [w] telle que validée dans l'aperçu (séances
+   * déplacées, échangées ou supprimées). Les pointages déjà faits sont gardés ;
+   * un rattrapage retiré repasse « à placer ».
+   */
+  applyWeek(w: number, list: WeekSessionInput[]): string {
+    const prev = new Map(this.week(w).map((s) => [s.id, s]));
+    const ss: SessionData[] = list.map((x) => {
+      const p = prev.get(x.id);
+      return {
+        id: x.id,
+        week: w,
+        day: x.day,
+        start: x.start,
+        end: x.end,
+        svc: x.svc,
+        cls: x.cls ?? null,
+        kind: x.kind,
+        dueId: x.kind === SessionKind.rattrapage ? (x.dueId ?? null) : null,
+        fixed: x.fixed,
+        base: x.base,
+        status: p?.status ?? SessionStatus.prevue,
+        who: p?.who ?? null,
+        motif: p?.motif ?? '',
+        noRedo: p?.noRedo ?? false,
+      };
+    });
+    const others = this.state.sessions.filter((s) => s.week !== w);
+    const placedHere = new Map(
+      ss.filter((s) => s.dueId != null).map((s) => [s.dueId!, s.id]),
+    );
+    this.state.dues = this.state.dues.map((u) => {
+      const here = placedHere.get(u.id);
+      if (here && !u.done) return { ...u, placedSession: here };
+      const lost =
+        u.placedSession != null &&
+        !others.some((s) => s.id === u.placedSession) &&
+        !ss.some((s) => s.id === u.placedSession);
+      return lost ? { ...u, placedSession: null } : u;
+    });
+    this.state.sessions = [...others, ...ss];
+    this.prepFor(w);
     this.state.generated.add(w);
     return `Planning du ${weekRange(w)} : ${ss.length} séances`;
   }

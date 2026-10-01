@@ -16,6 +16,8 @@ import { PlaceDto } from './dto/place.dto';
 import { SlotDto } from './dto/slot.dto';
 import { PointerDto } from './dto/pointer.dto';
 import { UpdatePrepDto } from './dto/update-prep.dto';
+import { WeekSessionDto } from './dto/generate.dto';
+import { SessionKind } from '../generated/prisma/enums';
 import { Planner, RattItem, SessionData, Slot, WeekChange } from './planner';
 import { PlanningRepository } from './planning.repository';
 import { PrismaService } from '../prisma/prisma.service';
@@ -189,11 +191,37 @@ export class PlanningService {
     });
   }
 
-  generate(w: number) {
+  /** Génère la semaine, ou enregistre l'aperçu modifié dans l'app ([edited]). */
+  generate(w: number, edited?: WeekSessionDto[]) {
     return this.repo.mutate((p) => {
-      const message = p.generate(w);
+      if (edited) this.checkWeek(p, edited);
+      const message = edited ? p.applyWeek(w, edited) : p.generate(w);
       return { message, ...this.weekView(p, w) };
     });
+  }
+
+  private checkWeek(p: Planner, list: WeekSessionDto[]) {
+    const ids = new Set<string>();
+    for (const s of list) {
+      if (ids.has(s.id))
+        throw new BadRequestException(`Séance en double : ${s.id}`);
+      ids.add(s.id);
+      if (s.end <= s.start)
+        throw new BadRequestException(
+          'L’heure de fin doit suivre l’heure de début',
+        );
+      if (!p.state.services.has(s.svc))
+        throw new BadRequestException(`Élève ou site inconnu : ${s.svc}`);
+      if (s.cls != null && p.state.classes.get(s.cls)?.siteId !== s.svc)
+        throw new BadRequestException(`Classe inconnue : ${s.cls}`);
+      if (
+        s.kind === SessionKind.rattrapage &&
+        !p.state.dues.some((u) => u.id === s.dueId && u.svc === s.svc)
+      )
+        throw new BadRequestException(
+          `Séance à rattraper inconnue : ${s.dueId}`,
+        );
+    }
   }
   pointer(id: string, dto: PointerDto) {
     return this.repo.mutate((p) => {

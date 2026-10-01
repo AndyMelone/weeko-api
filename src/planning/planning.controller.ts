@@ -17,6 +17,7 @@ import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBaseSlotDto } from './dto/create-base-slot.dto';
 import { CancelDto } from './dto/cancel.dto';
+import { GenerateDto } from './dto/generate.dto';
 import { PlaceDto } from './dto/place.dto';
 import { SlotDto } from './dto/slot.dto';
 import { PointerDto } from './dto/pointer.dto';
@@ -57,8 +58,11 @@ export class PlanningController {
 
   @Post('weeks/:week/generate')
   @HttpCode(200)
-  generate(@Param('week', ParseIntPipe) week: number) {
-    return this.planning.generate(week);
+  generate(
+    @Param('week', ParseIntPipe) week: number,
+    @Body() dto: GenerateDto = {},
+  ) {
+    return this.planning.generate(week, dto.sessions);
   }
   @Get('sessions')
   sessions(@Query('week', new ParseIntPipe({ optional: true })) week?: number) {
