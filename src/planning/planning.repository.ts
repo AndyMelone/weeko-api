@@ -82,7 +82,7 @@ export class PlanningRepository {
   async load(db: Tx): Promise<PlanState> {
     // Requêtes l'une après l'autre : une transaction n'a qu'une connexion.
     const blockFields = {
-      select: { day: true, start: true, end: true },
+      select: { day: true, start: true, end: true, kind: true },
       orderBy: [{ day: 'asc' as const }, { start: 'asc' as const }],
     };
     // Élèves archivés (suppression douce) : invisibles pour le planning.

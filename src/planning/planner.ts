@@ -9,6 +9,7 @@ import type {
 import { SessionKind, SessionStatus, Who } from '../generated/prisma/enums';
 import {
   dayNamesLower,
+  dayNamesShort,
   dayShort,
   fmt,
   parseTime,
@@ -48,6 +49,23 @@ export interface TimeBlock {
   day: number;
   start: number;
   end: number;
+  /** « ecole » : emploi du temps scolaire ; « autre » (défaut) : indisponibilité. */
+  kind?: string;
+}
+
+/** Emploi du temps : « lun., mar., jeu. 7h30–17h · mer. 7h30–12h ». */
+export function scheduleLabel(blocks: TimeBlock[]): string {
+  const groups = new Map<string, number[]>();
+  for (const b of [...blocks].sort((x, y) => x.day - y.day)) {
+    const k = range(b.start, b.end);
+    groups.set(k, [...(groups.get(k) ?? []), b.day]);
+  }
+  return [...groups]
+    .map(
+      ([r, days]) =>
+        `${days.map((d) => dayNamesShort[d].toLowerCase()).join(', ')} ${r}`,
+    )
+    .join(' · ');
 }
 
 export type ServiceData = Omit<Service, 'createdAt' | 'updatedAt'> & {
@@ -368,6 +386,12 @@ export class Planner {
         )
       ) {
         return `${S.first} a déjà cours ce jour-là, la veille ou le lendemain.`;
+      }
+      const school = S.unavailable.filter(
+        (b) => b.kind === 'ecole' && b.day === d,
+      );
+      if (school.length) {
+        return `${S.first} a cours ${school.map((b) => `de ${fmt(b.start)} à ${fmt(b.end)}`).join(' et ')} ce jour-là : pas de créneau de 2 h libre.`;
       }
       const blocks = this.blocksOn(it.svc, d);
       if (blocks.length) {
@@ -902,8 +926,14 @@ export class Planner {
       (S.fixed.length
         ? ` · fixe le ${S.fixed.map((f) => `${dayNamesLower[f.day]} ${fmt(f.start)}`).join(', ')}`
         : '') +
-      (S.unavailable.length
-        ? ` · indisponible le ${S.unavailable.map((b) => `${dayNamesLower[b.day]} ${blockLabel(b)}`).join(', ')}`
+      (S.unavailable.some((b) => b.kind === 'ecole')
+        ? ` · cours ${scheduleLabel(S.unavailable.filter((b) => b.kind === 'ecole'))}`
+        : '') +
+      (S.unavailable.some((b) => b.kind !== 'ecole')
+        ? ` · indisponible le ${S.unavailable
+            .filter((b) => b.kind !== 'ecole')
+            .map((b) => `${dayNamesLower[b.day]} ${blockLabel(b)}`)
+            .join(', ')}`
         : '')
     );
   }

@@ -207,7 +207,9 @@ describe('API (e2e)', () => {
           unavailable: [{ day: 4, start: '18:00', end: '23:59' }],
         })
         .expect(200);
-      expect(st.body.unavailable).toEqual([{ day: 4, start: 1080, end: 1440 }]);
+      expect(st.body.unavailable).toEqual([
+        { day: 4, start: 1080, end: 1440, kind: 'autre' },
+      ]);
       expect(st.body.rule).toContain('indisponible le vendredi après 18h');
       const set = await api()
         .patch('/settings', {
@@ -259,6 +261,25 @@ describe('API (e2e)', () => {
       expect(ics.text).toContain('BEGIN:VCALENDAR');
       expect(ics.text).toContain('X-WR-CALNAME:Weeko');
       expect(ics.text).toMatch(/DTSTART:\d{8}T\d{6}Z/);
+    });
+
+    it('emploi du temps scolaire d’un élève', async () => {
+      const st = await api()
+        .patch('/students/adje', {
+          unavailable: [
+            { day: 0, start: '07:30', end: '17:00', kind: 'ecole' },
+            { day: 1, start: '07:30', end: '17:00', kind: 'ecole' },
+            { day: 5, start: '12:00', end: '23:59' },
+          ],
+        })
+        .expect(200);
+      expect(st.body.unavailable).toEqual([
+        { day: 0, start: 450, end: 1020, kind: 'ecole' },
+        { day: 1, start: 450, end: 1020, kind: 'ecole' },
+        { day: 5, start: 720, end: 1440, kind: 'autre' },
+      ]);
+      expect(st.body.rule).toContain('cours lun., mar. 7h30–17h');
+      expect(st.body.rule).toContain('indisponible le samedi après 12h');
     });
   });
 });

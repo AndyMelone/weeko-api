@@ -205,6 +205,8 @@ model Unavailability {
   day       Int
   start     Int
   end       Int
+  /// « ecole » : emploi du temps scolaire ; « autre » : indisponibilité.
+  kind      String   @default("autre")
 
   @@index([serviceId])
 }

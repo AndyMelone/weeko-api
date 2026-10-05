@@ -1,4 +1,4 @@
-import { IsInt, Matches, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
 import { BadRequestException } from '@nestjs/common';
 import { parseTime } from '../formats';
 
@@ -16,6 +16,11 @@ export class BlockDto {
 
   @Matches(HH_MM)
   end: string;
+
+  /** « ecole » : emploi du temps scolaire ; « autre » (défaut). */
+  @IsOptional()
+  @IsIn(['ecole', 'autre'])
+  kind?: 'ecole' | 'autre';
 }
 
 export function toBlocks(list: BlockDto[]) {
@@ -27,6 +32,6 @@ export function toBlocks(list: BlockDto[]) {
       throw new BadRequestException(
         'Indisponibilité : la fin doit suivre le début',
       );
-    return { day: b.day, start, end };
+    return { day: b.day, start, end, kind: b.kind ?? 'autre' };
   });
 }

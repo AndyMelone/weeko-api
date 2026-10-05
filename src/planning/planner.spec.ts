@@ -407,4 +407,31 @@ describe('Planner', () => {
       p.week(2).filter((s) => s.svc === 'ange' && s.kind === 'normal'),
     ).toHaveLength(2);
   });
+
+  it('emploi du temps scolaire : jamais pendant les cours', () => {
+    const state = demoState();
+    state.services.get('ange')!.unavailable = [
+      { day: 0, start: 450, end: 1020, kind: 'ecole' },
+      { day: 2, start: 450, end: 720, kind: 'ecole' },
+      { day: 4, start: 450, end: 1020, kind: 'ecole' },
+    ];
+    const p = planner(state);
+    // Lundi : sortie du travail 15h, mais cours jusqu'à 17h → 17h–19h.
+    expect(p.slotOn('ange', 0, [], 0)).toMatchObject({
+      start: 1020,
+      end: 1140,
+    });
+    expect(p.ruleOf(p.svc('ange'))).toContain(
+      'cours lun., ven. 7h30–17h · mer. 7h30–12h',
+    );
+    // Lundi trop chargé : la raison cite les heures de cours.
+    const busy = [
+      { ...p.week(0)[0], day: 0, start: 1020, end: 1290, svc: 'ma' },
+    ];
+    expect(p.slotOn('ange', 0, busy, 0)).toBeNull();
+    const it = { ...p.items()[0], svc: 'ange', week: 5 };
+    expect(p.reason(it, 0)).toBe(
+      `${p.svc('ange').first} a cours de 7h30 à 17h ce jour-là : pas de créneau de 2 h libre.`,
+    );
+  });
 });
