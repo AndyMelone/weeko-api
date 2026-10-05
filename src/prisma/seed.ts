@@ -62,11 +62,11 @@ const services = [
     kind: 'site',
   },
   {
-    id: 'ec',
-    name: 'Epp Citadel',
-    first: 'Epp Citadel',
-    code: 'EC',
-    color: '#4A5568',
+    id: 'ba',
+    name: 'Batim',
+    first: 'Batim',
+    code: 'BA',
+    color: '#2F7A6E',
     kind: 'site',
   },
 ] as const;
@@ -78,9 +78,9 @@ const classes = [
   { id: 'c3', name: 'Terminale D', siteId: 'ng', defaultCount: 2 },
   { id: 'c4', name: 'Terminale C', siteId: 'ng', defaultCount: 0 },
   { id: 'c6', name: 'Terminale A', siteId: 'ng', defaultCount: 0 },
-  { id: 'c7', name: 'Terminale D', siteId: 'ec', defaultCount: 0 },
-  { id: 'c8', name: 'Terminale C', siteId: 'ec', defaultCount: 0 },
-  { id: 'c9', name: 'Terminale A', siteId: 'ec', defaultCount: 0 },
+  { id: 'c7', name: 'Terminale D', siteId: 'ba', defaultCount: 0 },
+  { id: 'c8', name: 'Terminale C', siteId: 'ba', defaultCount: 0 },
+  { id: 'c9', name: 'Terminale A', siteId: 'ba', defaultCount: 0 },
 ];
 
 /** Planning de base (w = 0). */
