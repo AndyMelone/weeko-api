@@ -257,8 +257,17 @@ export class Planner {
     return this.blocksOn(svcId, d).some((b) => st < b.end && en > b.start);
   }
 
-  /** Premier créneau possible pour [svcId] le jour [d] de la semaine [w]. */
-  slotOn(svcId: string, d: number, ss: SessionData[], w: number): Slot | null {
+  /**
+   * Premier créneau possible pour [svcId] le jour [d] de la semaine [w].
+   * Avec [relax] : la veille et le lendemain sont permis (jamais le même jour).
+   */
+  slotOn(
+    svcId: string,
+    d: number,
+    ss: SessionData[],
+    w: number,
+    relax = false,
+  ): Slot | null {
     const o = this.off(d, w);
     const day = ss
       .filter((s) => s.day === d && s.status !== SessionStatus.manquee)
@@ -273,7 +282,7 @@ export class Planner {
           (s) =>
             s.svc === svcId &&
             s.status !== SessionStatus.manquee &&
-            Math.abs(s.day - d) <= 1,
+            Math.abs(s.day - d) <= (relax ? 0 : 1),
         )
       ) {
         return null;
@@ -324,14 +333,19 @@ export class Planner {
 
   slots(
     svcId: string,
-    opts: { onlyDay?: number; w?: number; ss?: SessionData[] } = {},
+    opts: {
+      onlyDay?: number;
+      w?: number;
+      ss?: SessionData[];
+      relax?: boolean;
+    } = {},
   ): Slot[] {
     const w = opts.w ?? 0;
     const ss = opts.ss ?? this.week(w);
     const out: Slot[] = [];
     for (let d = 0; d < 7; d++) {
       if (opts.onlyDay != null && d !== opts.onlyDay) continue;
-      const sl = this.slotOn(svcId, d, ss, w);
+      const sl = this.slotOn(svcId, d, ss, w, opts.relax);
       if (sl) out.push(sl);
     }
     return out;
@@ -671,7 +685,26 @@ export class Planner {
       }
     }
 
-    const others = this.state.sessions.filter((s) => s.week !== w);
+    // Rattrapage coché ici mais casé une autre semaine où il est décoché :
+    // il est retiré de cette semaine-là pour être casé ici.
+    const moved = new Set(
+      this.state.dues
+        .filter((u) => {
+          if (u.done || prep.include[u.id] === false) return false;
+          const ps = this.sessionById(u.placedSession);
+          return (
+            ps != null &&
+            ps.week !== w &&
+            ps.status === SessionStatus.prevue &&
+            this.state.preps.get(ps.week)?.include[u.id] === false
+          );
+        })
+        .map((u) => u.placedSession!),
+    );
+    const others = this.state.sessions.filter(
+      (s) => s.week !== w && !moved.has(s.id),
+    );
+    let unplaced = 0;
     let nd = this.state.dues.map((u) =>
       u.placedSession != null &&
       !others.some((s) => s.id === u.placedSession) &&
@@ -684,8 +717,14 @@ export class Planner {
         return u;
       // Succès Group : la date du rattrapage est donnée par le président.
       if (!this.isEleve(u.svc)) return u;
-      const sl = this.slots(u.svc, { w, ss })[0];
-      if (!sl) return u;
+      // Règle stricte d'abord, sinon un jour voisin plutôt que rien.
+      const sl =
+        this.slots(u.svc, { w, ss })[0] ??
+        this.slots(u.svc, { w, ss, relax: true })[0];
+      if (!sl) {
+        unplaced++;
+        return u;
+      }
       const id = this.makeId(`r${u.id}`);
       ss.push(
         blank({
@@ -707,7 +746,7 @@ export class Planner {
     this.state.dues = nd;
     this.state.preps.set(w, prep);
     this.state.generated.add(w);
-    return `Planning du ${weekRange(w)} : ${ss.length} séances`;
+    return `Planning du ${weekRange(w)} : ${ss.length} séances${unplaced ? ` · ${unplaced} rattrapage${unplaced > 1 ? 's' : ''} sans créneau` : ''}`;
   }
 
   /**

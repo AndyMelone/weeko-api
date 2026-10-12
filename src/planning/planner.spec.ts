@@ -194,6 +194,30 @@ describe('Planner', () => {
     expect(p.state.generated.has(1)).toBe(true);
   });
 
+  it('rattrapage coché sans jour libre : casé la veille ou le lendemain', () => {
+    const p = planner();
+    // Adjé : lundi et jeudi, jamais le week-end → aucun jour non voisin.
+    p.savePointer('s1', { missed: true, who: 'moi', motif: 'Réunion' });
+    p.generate(1);
+    const ratt = p.week(1).find((s) => s.kind === SessionKind.rattrapage);
+    expect(ratt?.svc).toBe('adje');
+    expect(p.sameDayConflict()).toBeNull();
+    expect(p.state.dues[0].placedSession).toBe(ratt?.id);
+  });
+
+  it('rattrapage décoché une semaine, coché la suivante : déplacé', () => {
+    const p = planner();
+    p.savePointer('s3', { missed: true, who: 'moi', motif: 'Réunion' });
+    const id = p.state.dues[0].id;
+    p.generate(1);
+    p.updatePrep(1, { include: { [id]: false } });
+    p.generate(2);
+    const isRatt = (s: SessionData) => s.kind === SessionKind.rattrapage;
+    expect(p.week(1).filter(isRatt)).toHaveLength(0);
+    const ratt = p.week(2).find(isRatt);
+    expect(p.state.dues[0].placedSession).toBe(ratt?.id);
+  });
+
   it('élève absent la semaine : aucune séance normale', () => {
     const p = planner();
     p.updatePrep(1, { changes: { sondo: 'absent' } });
